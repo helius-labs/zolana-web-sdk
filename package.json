@@ -1,0 +1,20 @@
+{
+  "name": "zolana-web-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.8",
+  "engines": { "node": ">=24" },
+  "workspaces": ["packages/*", "examples/*"],
+  "scripts": {
+    "build:zolana": "npm run build --workspace @heliuslabs/zolana",
+    "build:prover": "npm run build --workspace @zolana/web-prover",
+    "build:example": "npm run build --workspace @zolana/browser-example",
+    "build": "npm run build:zolana && npm run build:prover && npm run build:example",
+    "typecheck": "npm run build:zolana && npm run build:prover && npm run typecheck --workspace @zolana/browser-example",
+    "test": "npm run test --workspace @zolana/web-prover",
+    "dev": "npm run dev --workspace @zolana/browser-example",
+    "build:wasm": "./scripts/build-wasm.sh",
+    "stage:assets": "node ./scripts/stage-assets.mjs"
+  }
+}

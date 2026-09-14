@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+
+import { getAddressDecoder } from "@solana/kit";
+
+import type { Bytes32, Signature } from "../src/interface/types.js";
+import { fetchTransactionSlots } from "../src/wallet/transaction-slots.js";
+import { signatureReads, signaturesPage } from "./helpers/clients.js";
+
+const SIGNATURE = "1".repeat(87) as Signature;
+const filled = (byte: number) => new Uint8Array(32).fill(byte) as Bytes32;
+const TREE = getAddressDecoder().decode(new Uint8Array(32).fill(9));
+
+function reader(events: readonly { leaf: bigint; tags: readonly Bytes32[] }[]) {
+  return signatureReads({
+    getShieldedTransactionsBySignature: async (signature: Signature) => {
+      expect(signature).toBe(SIGNATURE);
+      return signaturesPage({
+        transactions: events.map((event, eventIndex) => ({
+          eventIndex,
+          transaction: {
+            slot: 1n,
+            txSignature: SIGNATURE,
+            outputSlots: event.tags.map((viewTag, slotIndex) => ({
+              viewTag,
+              outputContext: {
+                hash: filled(slotIndex + 1),
+                tree: TREE,
+                leafIndex: event.leaf + BigInt(slotIndex),
+              },
+              payload: new Uint8Array(),
+            })),
+            messages: [],
+            nullifiers: [],
+            proofless: false,
+          },
+        })),
+      });
+    },
+  });
+}
+
+describe("owner tags", () => {
+  it("reads a tag per output slot", async () => {
+    const { ownerTags: tags } = await fetchTransactionSlots({
+      rpc: reader([{ leaf: 0n, tags: [filled(7), filled(8)] }]),
+      signature: SIGNATURE,
+    });
+
+    const base58 = getAddressDecoder();
+    expect(tags.size).toBe(2);
+    expect(tags.get(0)).toBe(base58.decode(filled(7)));
+    expect(tags.get(1)).toBe(base58.decode(filled(8)));
+  });
+
+  it("picks the event holding the leaf, not the first one", async () => {
+    const { ownerTags: tags } = await fetchTransactionSlots({
+      rpc: reader([
+        { leaf: 0n, tags: [filled(1)] },
+        { leaf: 50n, tags: [filled(2)] },
+      ]),
+      signature: SIGNATURE,
+      leafIndex: 50n,
+    });
+
+    expect(tags.size).toBe(1);
+    expect(tags.get(0)).toBe(getAddressDecoder().decode(filled(2)));
+  });
+});

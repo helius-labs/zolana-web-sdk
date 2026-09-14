@@ -1,0 +1,26 @@
+{
+  "schema": "zolana-ts-fixtures-v1",
+  "version": "1",
+  "files": [
+    {
+      "path": "transaction/authority-v1.json",
+      "sha256": "ac2d7c57e1cdc993dfb85817ef958bf15e490c13ecaf72aec59e853d63edcc5f"
+    },
+    {
+      "path": "transaction/frozen-tests-v1.json",
+      "sha256": "ce1f24cadf5f1871ef122c3d857a671e7630909398b54ce6a4d25a37a7ccd7b0"
+    },
+    {
+      "path": "transaction/serialization-v1.json",
+      "sha256": "9a3de3112192564a2e3d3777333c4a07e4c64156fe4ee1bc354863dd1f1c7f6c"
+    },
+    {
+      "path": "transaction/wallet-state-v1.json",
+      "sha256": "0828e94fa2eb8768f1cd533f4aad83f087a12692ce52c94334369e950f447004"
+    },
+    {
+      "path": "transaction/wallet-sync-v1.json",
+      "sha256": "7c89ebe78f2258262308c10607a9cced357647db8109c1891b96d84a899ad485"
+    }
+  ]
+}
