@@ -1,12 +1,12 @@
 # Zolana Web SDK
 
-Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the original browser demo and a snapshot of the TypeScript protocol SDK it uses.
+Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the Arkworks browser demo and a snapshot of the TypeScript protocol SDK it uses.
 
 ## Packages
 
 - `@zolana/web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
 - `@heliuslabs/zolana` is the matching upstream TypeScript SDK snapshot.
-- `examples/browser` demonstrates shield, transfer, unshield, local proving, and benchmark flows.
+- `examples/browser` is the focused Arkworks UI for generating one proof or benchmarking five proofs locally.
 - `wasm` is a self-contained Go module for the browser prover bridge.
 
 ## Setup

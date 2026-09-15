@@ -1,6 +1,6 @@
 # Upstream
 
-Extracted from `helius-labs/zolana` branch `origin/feat/mopro-browser-demo`.
+Extracted from `helius-labs/zolana` branch `origin/feat/mopro-browser-arkworks` at `87e9463b0d5b9527282ff7d77687258c92bb696e`.
 
 Source mapping:
 

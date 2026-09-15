@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser PoC: shield/transfer/unshield with local (wasm) or remote proving, plus on-page benchmarks.",
+  "description": "Focused browser demo for local Zolana proving with Go and threaded Arkworks engines.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
