@@ -14,7 +14,9 @@
     "typecheck": "npm run build:zolana && npm run build:prover && npm run typecheck --workspace @zolana/browser-example",
     "test": "npm run test --workspace @zolana/web-prover",
     "dev": "npm run dev --workspace @zolana/browser-example",
+    "setup": "node ./scripts/setup-assets.mjs && npm run build:zolana && npm run build:prover",
     "build:wasm": "./scripts/build-wasm.sh",
+    "build:runtime": "./scripts/build-runtime-release.sh",
     "stage:assets": "node ./scripts/stage-assets.mjs"
   }
 }

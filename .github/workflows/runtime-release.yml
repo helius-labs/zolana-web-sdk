@@ -1,0 +1,60 @@
+name: Runtime release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver runtime version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.7
+          cache-dependency-path: wasm/go.sum
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-11-15
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+      - name: Check out pinned Mopro
+        run: |
+          git clone --filter=blob:none https://github.com/sergeytimoshin/mopro.git "$RUNNER_TEMP/mopro"
+          git -C "$RUNNER_TEMP/mopro" checkout 2bb184c23463d6415ebb5c9110bfd779df910d2f
+      - name: Build runtime assets
+        env:
+          ZOLANA_REVISION: ${{ github.sha }}
+        run: ./scripts/build-runtime-release.sh "${{ inputs.version }}" "$RUNNER_TEMP/mopro"
+      - name: Publish immutable runtime release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          test ! -z "$VERSION"
+          gh release create "runtime-v$VERSION" "dist/runtime-v$VERSION/"* \
+            --title "Web prover runtime v$VERSION" \
+            --notes "Checksummed Zolana Go prover and pinned Mopro browser accelerator. See runtime-manifest.json for provenance."
+      - name: Print manifest lock values
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const crypto = require("node:crypto");
+          const version = process.env.VERSION;
+          const path = `dist/runtime-v${version}/runtime-manifest.json`;
+          const bytes = fs.readFileSync(path);
+          console.log("## runtime.lock.json manifest");
+          console.log(`- size: ${bytes.length}`);
+          console.log(`- sha256: ${crypto.createHash("sha256").update(bytes).digest("hex")}`);
+          NODE
