@@ -203,6 +203,17 @@ describe("prover lifecycle", () => {
 });
 
 describe("fetch cancellation", () => {
+  it("delegates same-origin prove paths outside the configured endpoint", async () => {
+    const { prover, fetch } = await fixture();
+    const input = "http://localhost:3001/other/prove";
+    const init = { method: "POST", body };
+
+    await prover.createFetch()(input, init);
+
+    expect(fetch).toHaveBeenCalledWith(input, init);
+    expect(TestWorker.instances).toHaveLength(0);
+  });
+
   it("rejects a pre-aborted signal before any key fetch or worker work", async () => {
     const { prover, fetch } = await fixture();
     const signal = AbortSignal.abort();

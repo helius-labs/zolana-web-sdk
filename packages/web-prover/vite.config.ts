@@ -10,7 +10,7 @@ export default defineConfig({
       fileName: "index",
     },
     rollupOptions: {
-      external: ["@heliuslabs/zolana"],
+      external: ["@heliuslabs/zolana", "@solana/kit"],
     },
   },
   worker: { format: "es" },

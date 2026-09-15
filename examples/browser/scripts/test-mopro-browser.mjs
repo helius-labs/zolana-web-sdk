@@ -3,7 +3,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Builder, By, until } from "selenium-webdriver";
 import chrome from "selenium-webdriver/chrome.js";
+import { createServer } from "vite";
 
+const demoUrl = process.env.DEMO_URL || "http://127.0.0.1:5178/";
+const server = process.env.DEMO_URL
+  ? undefined
+  : await createServer({ root: fileURLToPath(new URL("../", import.meta.url)), logLevel: "warn" });
+await server?.listen();
 const out =
   process.env.DEMO_REPORT_DIR ||
   fileURLToPath(new URL("../../../target/mopro-browser-ui/", import.meta.url));
@@ -46,7 +52,7 @@ async function run(expectedEngine) {
   console.log(results.at(-1).result.replaceAll("\n", " "));
 }
 try {
-  await driver.get(process.env.DEMO_URL || "http://127.0.0.1:5178/");
+  await driver.get(demoUrl);
   await driver.wait(until.elementLocated(By.css(".primary-button")), 30000);
   await driver.wait(async () => (await button("Generate proof")).isEnabled(), 30000);
   const visible = await driver.findElement(By.css("body")).getText();
@@ -107,12 +113,7 @@ try {
     'return performance.getEntriesByType("resource").map(r=>r.name)',
   );
   assert.ok(requests.some((url) => url.includes("prover.worker")));
-  assert.ok(
-    requests.every(
-      (url) =>
-        new URL(url).origin === new URL(process.env.DEMO_URL || "http://127.0.0.1:5178/").origin,
-    ),
-  );
+  assert.ok(requests.every((url) => new URL(url).origin === new URL(demoUrl).origin));
   assert.ok(requests.every((url) => !/\/devnet\//.test(url)));
   await driver.manage().window().setRect({ width: 390, height: 844 });
   assert.equal(
@@ -142,4 +143,5 @@ try {
   throw error;
 } finally {
   await driver.quit();
+  await server?.close();
 }

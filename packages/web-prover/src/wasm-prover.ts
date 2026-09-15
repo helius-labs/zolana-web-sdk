@@ -334,10 +334,13 @@ export class WasmProver {
    */
   createFetch(): typeof globalThis.fetch {
     const proverPath = new URL(this.#options.proverUrl);
+    proverPath.pathname = `${proverPath.pathname.replace(/\/+$/u, "")}/prove`;
     return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = requestUrl(input);
       const isProve =
-        url !== undefined && url.origin === proverPath.origin && url.pathname.endsWith("/prove");
+        url !== undefined &&
+        url.origin === proverPath.origin &&
+        url.pathname === proverPath.pathname;
       if (!isProve) return await this.#fetch(input as RequestInfo, init);
 
       const signal =

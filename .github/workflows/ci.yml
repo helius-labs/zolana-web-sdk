@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.7
+          cache-dependency-path: wasm/go.sum
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run check
+      - run: npm run test:browser
+        env:
+          CHROME_NO_SANDBOX: "1"

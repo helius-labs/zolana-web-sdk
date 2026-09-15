@@ -1,10 +1,12 @@
 {
   "name": "@zolana/web-prover",
   "version": "0.1.0",
-  "type": "module",
   "description": "Local Zolana Groth16 proving for browsers.",
   "license": "Apache-2.0",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,12 +19,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@heliuslabs/zolana": "*"
+    "@heliuslabs/zolana": "0.1.6-alpha"
   },
   "devDependencies": {
+    "@solana/kit": "^7.0.0",
     "@types/node": "^24.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@solana/kit": "^7.0.0"
   }
 }

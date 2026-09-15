@@ -2,21 +2,29 @@
   "name": "zolana-web-sdk",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
   "type": "module",
-  "packageManager": "npm@10.9.8",
-  "engines": { "node": ">=24" },
-  "workspaces": ["packages/*", "examples/*"],
   "scripts": {
     "build:zolana": "npm run build --workspace @heliuslabs/zolana",
     "build:prover": "npm run build --workspace @zolana/web-prover",
     "build:example": "npm run build --workspace @zolana/browser-example",
     "build": "npm run build:zolana && npm run build:prover && npm run build:example",
+    "check": "npm run check --workspace @heliuslabs/zolana && npm run test && npm run test:go && npm run build && npm pack --dry-run --workspace @zolana/web-prover",
     "typecheck": "npm run build:zolana && npm run build:prover && npm run typecheck --workspace @zolana/browser-example",
     "test": "npm run test --workspace @zolana/web-prover",
+    "test:browser": "npm run test:browser --workspace @zolana/browser-example",
+    "test:go": "cd wasm && go test ./...",
     "dev": "npm run dev --workspace @zolana/browser-example",
     "setup": "node ./scripts/setup-assets.mjs && npm run build:zolana && npm run build:prover",
     "build:wasm": "./scripts/build-wasm.sh",
     "build:runtime": "./scripts/build-runtime-release.sh",
     "stage:assets": "node ./scripts/stage-assets.mjs"
-  }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "npm@10.9.8"
 }

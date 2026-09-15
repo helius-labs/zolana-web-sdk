@@ -21,6 +21,15 @@ npm run dev
 
 The demo requires cross-origin isolation for the threaded Mopro kernel. Its Vite server already sends the required COOP/COEP headers.
 
+## Validation
+
+```sh
+npm run check
+npm run test:browser
+```
+
+The browser test starts and stops its own Vite server. Set `DEMO_URL` only when testing an already-running deployment.
+
 ## Runtime releases
 
 The browser runtime is built once by maintainers and published as a versioned GitHub release. `runtime.lock.json` pins the release manifest by SHA-256, while the manifest pins every downloaded runtime file. Proving keys are fetched from their immutable CloudFront prefix and checked against `wasm/prover/provingkeys/proving-keys.lock`.
