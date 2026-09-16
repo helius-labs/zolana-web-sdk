@@ -11,19 +11,8 @@ export {
   type ShapeKey,
 } from "./shapes.js";
 
-export {
-  RunRecorder,
-  describeEnvironment,
-  describeError,
-  formatMs,
-  measurementFor,
-  proveMs,
-  type Environment,
-  type Measurement,
-  type ProverKind,
-  type RunResult,
-  type StepName,
-} from "./bench.js";
+export type { Measurement } from "./measurement.js";
+export type { WasmProverErrorCode } from "./errors.js";
 
 export {
   WasmProver,
@@ -33,19 +22,6 @@ export {
   type WorkerRequest,
   type WorkerResponse,
 } from "./wasm-prover.js";
-
-export {
-  benchmarkShapeKeys,
-  installMeasurementSink,
-  proverMeasurementSink,
-  runFlow,
-  runSweep,
-  type FlowContext,
-  type FlowOptions,
-  type KeyLoader,
-} from "./flow.js";
-
-export { signSendAndConfirm, type Landed, type Signer, type SubmitClient } from "./submit.js";
 
 export { automaticProvingThreads } from "./proving-threads.js";
 

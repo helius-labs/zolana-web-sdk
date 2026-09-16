@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:browser": "node scripts/test-mopro-browser.mjs"
+    "test:browser": "node scripts/test-mopro-browser.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@heliuslabs/zolana": "*",
@@ -25,6 +26,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "selenium-webdriver": "^4.27.0",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   }
 }

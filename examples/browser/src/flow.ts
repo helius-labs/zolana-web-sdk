@@ -36,7 +36,7 @@ import { signSendAndConfirm, type Signer, type SubmitClient } from "./submit.js"
 
 import { sweepAmounts } from "./sweep-amounts.js";
 import { RunRecorder, type Measurement, type ProverKind, type RunResult } from "./bench.js";
-import { canonicalShape, type ShapeKey } from "./shapes.js";
+import { canonicalShape, type ShapeKey } from "@zolana/web-prover";
 
 /** Loads one shape's proving key and reports how long each stage took. */
 export interface KeyLoader {

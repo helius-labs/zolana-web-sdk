@@ -8,6 +8,8 @@
  * that mixes them silently is worse than no table.
  */
 
+import { WasmProverError } from "@zolana/web-prover";
+
 export type ProverKind = "remote" | "wasm" | "native";
 
 export type StepName =
@@ -110,56 +112,10 @@ export class RunRecorder {
   }
 }
 
-/**
- * Flattens an error into something diagnosable on a page.
- *
- * The SDK's errors carry the useful part outside `message`: the code, the lifted
- * `causeCode`, `details`, and a `cause` chain. `name: message` alone reduces every
- * failure to a wrapper label like "WalletError: WALLET_BUILD_TRANSFER", which
- * names the step that failed and nothing about why.
- */
-export function describeError(error: unknown, depth = 0): string {
-  if (depth > 4) return "...";
-  if (!(error instanceof Error)) {
-    // A structured RPC error is a plain object, and String() yields
-    // "[object Object]". Show its own properties instead.
-    if (typeof error === "object" && error !== null) {
-      const own = Object.getOwnPropertyNames(error)
-        .map((key) => `${key}=${String((error as Record<string, unknown>)[key])}`)
-        .join(" ");
-      return own === "" ? String(error) : own;
-    }
-    return String(error);
-  }
-
-  const extra = error as Error & {
-    code?: unknown;
-    causeCode?: unknown;
-    details?: unknown;
-  };
-  const parts = [`${error.name}: ${error.message}`];
-  if (typeof extra.causeCode === "string" && extra.causeCode !== error.message) {
-    parts.push(`causeCode=${extra.causeCode}`);
-  }
-  if (extra.details !== undefined) {
-    parts.push(`details=${safeJson(extra.details)}`);
-  }
-  const cause: unknown = (error as { cause?: unknown }).cause;
-  if (cause !== undefined && cause !== null) {
-    parts.push(`<- ${describeError(cause, depth + 1)}`);
-  }
-  return parts.join(" ");
-}
-
-/** Details can hold bigints, which JSON.stringify refuses outright. */
-function safeJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, (_key, entry) =>
-      typeof entry === "bigint" ? `${entry.toString()}n` : entry,
-    );
-  } catch {
-    return String(value);
-  }
+export function describeError(error: unknown): string {
+  if (error instanceof WasmProverError) return new WasmProverError(error.code).message;
+  if (error instanceof Error && error.name === "AbortError") return "Operation cancelled";
+  return "Operation failed";
 }
 
 export function formatMs(ms: number): string {

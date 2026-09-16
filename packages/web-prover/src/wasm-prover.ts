@@ -12,7 +12,9 @@
  */
 
 import { abortable } from "./abortable.js";
-import type { Measurement } from "./bench.js";
+import type { Measurement } from "./measurement.js";
+import { operationError, WasmProverError } from "./errors.js";
+export { WasmProverError } from "./errors.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { proofRequestShape } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
@@ -57,13 +59,6 @@ export interface WasmProverOptions {
   readonly workerFactory?: () => Worker;
   /** Called for each timed worker operation so the UI can chart it. */
   readonly onMeasurement?: (measurement: Measurement) => void;
-}
-
-export class WasmProverError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "WasmProverError";
-  }
 }
 
 /**
@@ -130,21 +125,21 @@ export class WasmProver {
   start(source: Worker | (() => Worker) | undefined = this.#factory): Promise<void> {
     if (this.#initialization !== undefined) return this.#initialization;
     if (source === undefined) {
-      return Promise.reject(new WasmProverError("prover worker factory is not configured"));
+      return Promise.reject(new WasmProverError("wasm_worker_not_started"));
     }
     this.#factory = typeof source === "function" ? source : undefined;
     let worker: Worker;
     try {
       worker = typeof source === "function" ? source() : source;
-    } catch (error) {
-      return Promise.reject(error);
+    } catch {
+      return Promise.reject(new WasmProverError("wasm_init_failed"));
     }
     this.#worker = worker;
     worker.addEventListener("message", (event: MessageEvent<WorkerResponse | WorkerFatal>) => {
       if (this.#worker !== worker) return;
       const response = event.data;
       if ("fatal" in response) {
-        this.#fail(new WasmProverError(response.error));
+        this.#fail(new WasmProverError("wasm_worker_failed"));
         return;
       }
       const pending = this.#pending.get(response.id);
@@ -153,23 +148,20 @@ export class WasmProver {
       pending.resolve(response);
     });
     worker.addEventListener("error", (event) => {
+      event.preventDefault();
       if (this.#worker !== worker) return;
-      this.#fail(new WasmProverError(`prover worker failed: ${event.message || "failed to load"}`));
+      this.#fail(new WasmProverError("wasm_worker_failed"));
     });
     worker.addEventListener("messageerror", () => {
-      if (this.#worker === worker)
-        this.#fail(new WasmProverError("Cannot decode prover worker response"));
+      if (this.#worker === worker) this.#fail(new WasmProverError("wasm_invalid_response"));
     });
-    const initialization = this.#call(
-      {
-        kind: "init",
-        wasmUrl: this.#options.wasmUrl,
-        threads: this.#options.threads ?? automaticProvingThreads(),
-      },
-      "wasm-init",
-    )
+    const initialization = this.#call({
+      kind: "init",
+      wasmUrl: this.#options.wasmUrl,
+      threads: this.#options.threads ?? automaticProvingThreads(),
+    })
       .then((ready) => {
-        if (this.#worker !== worker) throw new WasmProverError("prover worker terminated");
+        if (this.#worker !== worker) throw new WasmProverError("wasm_worker_terminated");
         const value = ready.value;
         if (
           typeof value !== "object" ||
@@ -177,7 +169,7 @@ export class WasmProver {
           !("threads" in value) ||
           typeof value.threads !== "number"
         ) {
-          throw new WasmProverError("Invalid prover initialization response");
+          throw new WasmProverError("wasm_invalid_response");
         }
         this.#threads = value.threads;
       })
@@ -196,7 +188,7 @@ export class WasmProver {
     } else if (this.#factory !== undefined) {
       await abortable(this.start(this.#factory), signal);
     } else {
-      throw new WasmProverError("prover worker is not started");
+      throw new WasmProverError("wasm_worker_not_started");
     }
     signal.throwIfAborted();
   }
@@ -233,11 +225,7 @@ export class WasmProver {
     signal.throwIfAborted();
 
     this.#loaded.clear();
-    const response = await this.#call(
-      { kind: "loadKey", fileName: shape.keyFile, key },
-      "key-load",
-      [key],
-    );
+    const response = await this.#call({ kind: "loadKey", fileName: shape.keyFile, key }, [key]);
     signal.throwIfAborted();
     const info = response.value as
       | Readonly<{ key?: string; nbPublic?: number; nbSecret?: number }>
@@ -271,14 +259,23 @@ export class WasmProver {
     if (this.#manifest !== undefined) return this.#manifest;
     const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/manifest.json`;
     const response = await abortable(this.#fetch(url, { signal }), signal);
-    if (!response.ok) {
-      throw new WasmProverError(
-        `proving-key manifest ${url} is missing (${String(response.status)}). Run \`just poc-keys\`.`,
-      );
+    if (!response.ok) throw new WasmProverError("wasm_key_manifest_error");
+    let parsed: unknown;
+    try {
+      parsed = await abortable(response.json(), signal);
+    } catch (error) {
+      rethrowAbort(error, signal);
+      throw new WasmProverError("wasm_key_manifest_error");
     }
-    const parsed = (await abortable(response.json(), signal)) as Record<string, KeyDigest>;
     signal.throwIfAborted();
-    this.#manifest = new Map(Object.entries(parsed));
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed) ||
+      !Object.values(parsed).every(isKeyDigest)
+    )
+      throw new WasmProverError("wasm_key_manifest_error");
+    this.#manifest = new Map(Object.entries(parsed) as [string, KeyDigest][]);
     return this.#manifest;
   }
 
@@ -286,45 +283,33 @@ export class WasmProver {
     const manifest = await this.#keyManifest(signal);
     const expected = manifest.get(shape.keyFile);
     if (expected === undefined) {
-      throw new WasmProverError(
-        `${shape.keyFile} is not in the proving-key manifest; run \`just poc-keys\``,
-      );
+      throw new WasmProverError("wasm_key_manifest_error");
     }
 
     const cacheName = "zolana-proving-keys";
-    const cacheable = typeof globalThis.caches === "object";
-    if (cacheable) {
-      const cache = await abortable(globalThis.caches.open(cacheName), signal);
-      const hit = await abortable(cache.match(url), signal);
+    const cache = await optionalCache(() => globalThis.caches?.open(cacheName), signal);
+    if (cache !== undefined) {
+      const hit = await optionalCache(() => cache.match(url), signal);
       if (hit !== undefined) {
-        const cached = await abortable(hit.arrayBuffer(), signal);
-        if (await abortable(matchesDigest(cached, expected), signal)) return cached;
+        const cached = await optionalCache(() => hit.arrayBuffer(), signal);
+        if (cached !== undefined && (await abortable(matchesDigest(cached, expected), signal)))
+          return cached;
         // Written before a rotation: same shape, different circuit. Evict rather
         // than prove against it.
-        await abortable(cache.delete(url), signal);
+        await optionalCache(() => cache.delete(url), signal);
       }
     }
 
     const response = await abortable(this.#fetch(url, { signal }), signal);
     if (!response.ok) {
-      throw new WasmProverError(
-        `fetching proving key ${url} failed: ${String(response.status)} ${response.statusText}`,
-      );
+      throw new WasmProverError("wasm_key_download_failed");
     }
     const bytes = await abortable(response.arrayBuffer(), signal);
     if (!(await abortable(matchesDigest(bytes, expected), signal))) {
-      const actual = await abortable(sha256Hex(bytes), signal);
-      throw new WasmProverError(
-        `proving key ${shape.keyFile} does not match the lockfile: got ` +
-          `${String(bytes.byteLength)} bytes sha256=${actual.slice(0, 16)}..., expected ` +
-          `${String(expected.size)} bytes sha256=${expected.sha256.slice(0, 16)}.... ` +
-          "Re-run `just poc-keys` after a rebase; the pinned key version moves with it.",
-      );
+      throw new WasmProverError("wasm_key_digest_mismatch");
     }
-    if (cacheable) {
-      const cache = await abortable(globalThis.caches.open(cacheName), signal);
-      await abortable(cache.put(url, new Response(bytes.slice(0))), signal);
-    }
+    if (cache !== undefined)
+      await optionalCache(() => cache.put(url, new Response(bytes.slice(0))), signal);
     return bytes;
   }
 
@@ -350,11 +335,9 @@ export class WasmProver {
             ? input.signal
             : undefined;
       signal?.throwIfAborted();
-      const body = await abortable(readBody(input, init), signal);
-      if (body === undefined) {
-        throw new WasmProverError("intercepted a prove request with no body");
-      }
       try {
+        const body = await abortable(readBody(input, init), signal);
+        if (body === undefined) throw new WasmProverError("wasm_invalid_request");
         const result = await this.proveRequest(body, signal);
         signal?.throwIfAborted();
         return new Response(result.proof, {
@@ -362,11 +345,8 @@ export class WasmProver {
           headers: { "content-type": "application/json" },
         });
       } catch (error) {
-        signal?.throwIfAborted();
-        return proverErrorResponse(
-          error instanceof Error ? error.message : String(error),
-          this.#options.onMeasurement,
-        );
+        rethrowAbort(error, signal);
+        return proverErrorResponse(error, this.#options.onMeasurement);
       }
     };
   }
@@ -383,23 +363,21 @@ export class WasmProver {
   ): Promise<{ proof: string; proveMs: number; verifyMs: number }> {
     return this.#enqueue(async (active) => {
       const shape = proofRequestShape(body);
-      if (shape === undefined)
-        throw new WasmProverError("Unsupported circuit or malformed request");
+      if (shape === undefined) throw new WasmProverError("wasm_invalid_request");
       await this.#loadKey(shape, active);
       active.throwIfAborted();
-      const response = await this.#call({ kind: "prove", body }, "prove");
-      if (!response.ok) throw new WasmProverError(response.error ?? "Proof generation failed");
-      if (typeof response.value !== "string") throw new WasmProverError("Invalid proof response");
+      const response = await this.#call({ kind: "prove", body });
+      if (typeof response.value !== "string") throw new WasmProverError("wasm_invalid_response");
       const proof = response.value;
       active.throwIfAborted();
-      const verified = await this.#call({ kind: "verify", body, proof }, "verify");
+      const verified = await this.#call({ kind: "verify", body, proof });
       if (
         typeof verified.value !== "object" ||
         verified.value === null ||
         !("valid" in verified.value) ||
         verified.value.valid !== true
       ) {
-        throw new WasmProverError("Native gnark verification rejected the proof");
+        throw new WasmProverError("wasm_verify_failed");
       }
       active.throwIfAborted();
       this.#options.onMeasurement?.({
@@ -414,7 +392,7 @@ export class WasmProver {
   async loadedKeys(): Promise<readonly string[]> {
     return this.#enqueue(async (signal) => {
       await this.#ensureStarted(signal);
-      const response = await this.#call({ kind: "loadedKeys" }, "loadedKeys");
+      const response = await this.#call({ kind: "loadedKeys" });
       const value = response.value;
       if (
         typeof value === "object" &&
@@ -424,13 +402,13 @@ export class WasmProver {
       ) {
         return value.keys.map(String);
       }
-      throw new WasmProverError("Invalid loaded keys response");
+      throw new WasmProverError("wasm_invalid_response");
     });
   }
 
   terminate(): void {
     this.#factory = undefined;
-    this.#fail(new WasmProverError("prover worker terminated"));
+    this.#fail(new WasmProverError("wasm_worker_terminated"));
   }
 
   #fail(error: unknown): void {
@@ -449,27 +427,22 @@ export class WasmProver {
 
   async #call(
     request: WithoutId<WorkerRequest>,
-    label: string,
     transfer: readonly Transferable[] = [],
   ): Promise<WorkerResponse> {
     const worker = this.#worker;
     if (worker === undefined) {
-      throw new WasmProverError(`${label}: prover worker is not started`);
+      throw new WasmProverError("wasm_worker_not_started");
     }
     const id = this.#nextId++;
     const response = await new Promise<WorkerResponse>((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
       try {
         worker.postMessage({ ...request, id }, [...transfer]);
-      } catch (error) {
-        this.#fail(error);
+      } catch {
+        this.#fail(new WasmProverError("wasm_worker_failed"));
       }
     });
-    // `prove` failures are returned to the caller so they can become a 500;
-    // every other failure is a setup problem and should throw.
-    if (!response.ok && request.kind !== "prove") {
-      throw new WasmProverError(`${label}: ${response.error ?? "unknown worker error"}`);
-    }
+    if (!response.ok) throw operationError(request.kind);
     return response;
   }
 }
@@ -520,34 +493,43 @@ async function matchesDigest(bytes: ArrayBuffer, expected: KeyDigest): Promise<b
  * server rejection rather than a retryable transport fault.
  */
 function proverErrorResponse(
-  message: string,
+  error: unknown,
   onMeasurement?: (measurement: Measurement) => void,
 ): Response {
-  onMeasurement?.({ step: "transfer-prove", ms: 0, note: `wasm prover: ${message}` });
-  // Logged as well: the page shows one measurement at a time, and a sweep can
-  // move past this before anyone reads it.
-  console.error(`[wasm prover] ${message}`);
-  return new Response(JSON.stringify({ code: "wasm_prover_error", message }), {
+  const safe = new WasmProverError(error instanceof WasmProverError ? error.code : undefined);
+  onMeasurement?.({ step: "transfer-prove", ms: 0, note: safe.code });
+  return new Response(JSON.stringify({ code: safe.code, message: safe.message }), {
     status: 500,
     headers: { "content-type": "application/json" },
   });
 }
 
-/** Shape and array lengths declared by a `/prove` request, for diagnosis. */
-function describeRequest(body: string): string {
+function isKeyDigest(value: unknown): value is KeyDigest {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "size" in value &&
+    Number.isSafeInteger(value.size) &&
+    Number(value.size) > 0 &&
+    "sha256" in value &&
+    typeof value.sha256 === "string" &&
+    /^[a-f0-9]{64}$/u.test(value.sha256)
+  );
+}
+
+function rethrowAbort(error: unknown, signal?: AbortSignal): void {
+  signal?.throwIfAborted();
+  if (error instanceof Error && error.name === "AbortError") throw error;
+}
+
+async function optionalCache<T>(
+  operation: () => T | Promise<T>,
+  signal: AbortSignal,
+): Promise<T | undefined> {
   try {
-    const r = JSON.parse(body) as Record<string, unknown>;
-    const len = (key: string): string => {
-      const value = r[key];
-      return Array.isArray(value) ? String(value.length) : "-";
-    };
-    return (
-      `${String(r["circuitType"])} ${String(r["nInputs"])}x${String(r["nOutputs"])} ` +
-      `in=${len("inputs")} out=${len("outputs")} pubAssets=${len("publicAssets")} ` +
-      `pubAmounts=${len("publicAmounts")} signers=${len("signerPkHashes")} ` +
-      `outOwners=${len("publishedOutputOwnerPkHashes")}`
-    );
-  } catch {
-    return "unparseable";
+    return await abortable(Promise.resolve().then(operation), signal);
+  } catch (error) {
+    rethrowAbort(error, signal);
+    return undefined;
   }
 }

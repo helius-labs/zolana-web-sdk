@@ -4,7 +4,7 @@ import {
   selectUtxos,
   isPlainUtxo,
   MAX_SPEND_INPUTS,
-} from "../../zolana/src/flows/select.js";
+} from "../../../packages/zolana/src/flows/select.js";
 import {
   initializePoseidon,
   ShieldedKeypair,
@@ -13,7 +13,7 @@ import {
   Data,
   SOL_MINT,
   type Bytes32,
-} from "../../zolana/src/index.js";
+} from "../../../packages/zolana/src/index.js";
 import { address } from "@solana/kit";
 import { sweepAmounts } from "../src/sweep-amounts.js";
 

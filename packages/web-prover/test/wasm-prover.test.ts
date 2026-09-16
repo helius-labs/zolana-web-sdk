@@ -6,7 +6,7 @@ import {
   type WorkerResponse,
   type WorkerFatal,
 } from "../src/wasm-prover.js";
-import type { Measurement } from "../src/bench.js";
+import type { Measurement } from "../src/measurement.js";
 import { TRANSFER_SHAPES } from "../src/shapes.js";
 
 const body = JSON.stringify({ circuitType: "transfer-confidential", nInputs: 2, nOutputs: 3 });
@@ -113,7 +113,10 @@ beforeEach(() => {
   vi.stubGlobal("Worker", TestWorker);
   vi.stubGlobal("caches", undefined);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("prover lifecycle", () => {
   it("starts its bundled worker automatically and exposes the product alias", async () => {
@@ -328,6 +331,180 @@ describe("fetch cancellation", () => {
     await prover.start(factory);
     const req = new Request(endpoint, { method: "POST", body, signal: AbortSignal.abort() });
     expect((await prover.createFetch()(req, { signal: null })).status).toBe(200);
+    prover.terminate();
+  });
+});
+
+describe("witness privacy", () => {
+  const sentinel = "review-private-sentinel";
+
+  it.each(["init", "loadKey", "prove", "verify"] as const)(
+    "redacts raw %s failures in the API, fetch adapter and measurements",
+    async (kind) => {
+      const measurements: Measurement[] = [];
+      const logging = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { prover } = await fixture((measurement) => measurements.push(measurement));
+      const reply = TestWorker.prototype.reply;
+      vi.spyOn(TestWorker.prototype, "reply").mockImplementation(
+        function (this: TestWorker, request) {
+          if (request.kind === kind) {
+            this.message({ id: request.id, ok: false, error: sentinel, ms: 0 });
+          } else reply.call(this, request);
+        },
+      );
+      const error = await failure(prover.proveRequest(body));
+      expect(error).toMatchObject({ name: "WasmProverError" });
+      expect(String(error)).not.toContain(sentinel);
+      expect(error).not.toHaveProperty("cause");
+      const response = await prover.createFetch()(endpoint, { method: "POST", body });
+      expect(response.status).toBe(500);
+      const responseBody = await response.json();
+      expect(responseBody).toMatchObject({ code: expect.stringMatching(/^wasm_/) });
+      expect(JSON.stringify(responseBody)).not.toContain(sentinel);
+      expect(JSON.stringify(measurements)).not.toContain(sentinel);
+      expect(logging).not.toHaveBeenCalled();
+      prover.terminate();
+    },
+  );
+
+  it.each(["fatal", "error"])("redacts %s runtime failures", async (kind) => {
+    const { prover } = await fixture();
+    await prover.start(factory);
+    current().hold = "prove";
+    const pending = failure(prover.proveRequest(body));
+    await vi.waitFor(() =>
+      expect(current().requests.some((request) => request.kind === "prove")).toBe(true),
+    );
+    if (kind === "fatal") current().message({ fatal: true, error: sentinel });
+    else {
+      const event = new Event("error", { cancelable: true });
+      Object.assign(event, { message: sentinel });
+      current().dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(await pending).toMatchObject({
+      code: "wasm_worker_failed",
+      message: "Prover worker failed",
+    });
+    prover.terminate();
+  });
+});
+
+describe("best-effort proving-key cache", () => {
+  function cacheFixture() {
+    const cache = {
+      match: vi.fn(async () => new Response(new Uint8Array([9, 9, 9]))),
+      delete: vi.fn(async () => true),
+      put: vi.fn(async () => {}),
+    };
+    const storage = { open: vi.fn(async () => cache) };
+    vi.stubGlobal("caches", storage);
+    return { cache, storage };
+  }
+
+  it.each(["open", "match", "delete", "put", "body", "getter"] as const)(
+    "continues with validated network bytes when cache %s throws",
+    async (operation) => {
+      const { prover, fetch } = await fixture();
+      const { cache, storage } = cacheFixture();
+      const error = new DOMException("storage unavailable", "QuotaExceededError");
+      if (operation === "open") storage.open.mockRejectedValue(error);
+      else if (operation === "getter") {
+        Object.defineProperty(globalThis, "caches", {
+          configurable: true,
+          get() {
+            throw error;
+          },
+        });
+      } else if (operation === "body") {
+        cache.match.mockResolvedValue(
+          Object.assign(new Response(), { arrayBuffer: () => Promise.reject(error) }),
+        );
+      } else cache[operation].mockRejectedValue(error);
+      await expect(prover.proveRequest(body)).resolves.toHaveProperty("proof");
+      expect(fetch.mock.calls.filter(([input]) => String(input).endsWith(".key"))).toHaveLength(1);
+      expect(
+        new Uint8Array(
+          (request(current(), "loadKey") as Extract<WorkerRequest, { kind: "loadKey" }>).key,
+        ),
+      ).toEqual(key);
+      prover.terminate();
+    },
+  );
+
+  it.each(["open", "match", "delete", "put"] as const)(
+    "does not swallow a cache %s AbortError",
+    async (operation) => {
+      const { prover } = await fixture();
+      const { cache, storage } = cacheFixture();
+      const error = new DOMException("cancelled", "AbortError");
+      if (operation === "open") storage.open.mockRejectedValue(error);
+      else cache[operation].mockRejectedValue(error);
+      await expect(prover.createFetch()(endpoint, { method: "POST", body })).rejects.toBe(error);
+      expect(current().requests.some((request) => request.kind === "loadKey")).toBe(false);
+      prover.terminate();
+    },
+  );
+
+  it.each(["open", "match", "delete", "put"] as const)(
+    "cancels a pending cache %s without installing a late key",
+    async (operation) => {
+      const { prover } = await fixture();
+      const { cache, storage } = cacheFixture();
+      const pendingCache = Promise.withResolvers<never>();
+      const pendingOperation = operation === "open" ? storage.open : cache[operation];
+      pendingOperation.mockImplementation(() => pendingCache.promise);
+      const controller = new AbortController();
+      const pending = failure(prover.proveRequest(body, controller.signal));
+      await vi.waitFor(() => expect(pendingOperation).toHaveBeenCalled());
+      controller.abort();
+      expect(await pending).toBe(controller.signal.reason);
+      pendingCache.reject(new DOMException("late storage error", "QuotaExceededError"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(current().requests.some((request) => request.kind === "loadKey")).toBe(false);
+      prover.terminate();
+    },
+  );
+
+  it("uses a validated cache hit without downloading the key", async () => {
+    const { prover, fetch } = await fixture();
+    const { cache } = cacheFixture();
+    cache.match.mockResolvedValue(new Response(key));
+    await prover.proveRequest(body);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(cache.delete).not.toHaveBeenCalled();
+    expect(cache.put).not.toHaveBeenCalled();
+    prover.terminate();
+  });
+
+  it("rejects tampered network bytes even when stale-cache eviction fails", async () => {
+    const { prover, fetch } = await fixture();
+    const { cache } = cacheFixture();
+    cache.delete.mockRejectedValue(new DOMException("denied", "SecurityError"));
+    const normal = fetch.getMockImplementation()!;
+    fetch.mockImplementation((input, init) =>
+      String(input).endsWith(".key")
+        ? Promise.resolve(new Response(new Uint8Array([4, 5, 6])))
+        : normal(input, init),
+    );
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({
+      code: "wasm_key_digest_mismatch",
+    });
+    expect(cache.put).not.toHaveBeenCalled();
+    expect(current().requests.some((request) => request.kind === "loadKey")).toBe(false);
+    prover.terminate();
+  });
+
+  it.each(["cached", "network"])("preserves %s digest implementation failures", async (source) => {
+    const { prover, fetch } = await fixture();
+    const { storage } = cacheFixture();
+    if (source === "network")
+      storage.open.mockRejectedValue(new DOMException("denied", "SecurityError"));
+    const error = new Error("digest unavailable");
+    vi.spyOn(crypto.subtle, "digest").mockRejectedValue(error);
+    await expect(prover.proveRequest(body)).rejects.toBe(error);
+    expect(fetch).toHaveBeenCalledTimes(source === "cached" ? 1 : 2);
+    expect(current().requests.some((request) => request.kind === "loadKey")).toBe(false);
     prover.terminate();
   });
 });

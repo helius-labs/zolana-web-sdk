@@ -1,13 +1,81 @@
+#!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const argumentsList = process.argv.slice(2);
+const argumentsMap = new Map();
+for (let index = 0; index < argumentsList.length; index += 2) {
+  const flag = argumentsList[index];
+  const value = argumentsList[index + 1];
+  if (
+    !["--output", "--keys"].includes(flag) ||
+    !value ||
+    value.startsWith("--") ||
+    argumentsMap.has(flag)
+  ) {
+    throw new Error(
+      "Usage: zolana-prover-assets --output <public-directory> [--keys name1.key,name2.key]",
+    );
+  }
+  argumentsMap.set(flag, value);
+}
+const standalone = argumentsMap.has("--output");
+const publicDirectory = standalone
+  ? resolve(argumentsMap.get("--output"))
+  : join(root, "examples/browser/public");
 const runtimeLock = JSON.parse(await readFile(join(root, "runtime.lock.json"), "utf8"));
 const provingKeysLock = JSON.parse(
   await readFile(join(root, "wasm/prover/provingkeys/proving-keys.lock"), "utf8"),
 );
+const selectedKeys = argumentsMap.has("--keys")
+  ? argumentsMap.get("--keys").split(",")
+  : runtimeLock.requiredKeys;
+if (
+  !Array.isArray(selectedKeys) ||
+  selectedKeys.length === 0 ||
+  new Set(selectedKeys).size !== selectedKeys.length
+) {
+  throw new Error("Select a nonempty list of distinct proving-key names");
+}
+for (const name of selectedKeys) {
+  if (
+    typeof name !== "string" ||
+    !/^(transfer_confidential_\d+_\d+|merge_8_1)\.key$/.test(name) ||
+    !Object.hasOwn(provingKeysLock.keys, name)
+  ) {
+    throw new Error(
+      "Unsupported proving-key name; select a browser key from the pinned proving-keys lockfile",
+    );
+  }
+}
+const bridgeDirectory = join(root, "dist/bridge");
+const bridgeManifest = JSON.parse(await readFile(join(bridgeDirectory, "manifest.json"), "utf8"));
+if (
+  bridgeManifest.format !== 1 ||
+  !Array.isArray(bridgeManifest.files) ||
+  bridgeManifest.files.length !== 2
+)
+  throw new Error("Rebuilt Go bridge is missing; run npm run build:prover");
+const bridgeFiles = new Map();
+for (const entry of bridgeManifest.files) {
+  if (
+    !(
+      (entry.asset === "zolana-prover.wasm" &&
+        entry.destination === "examples/browser/public/prover/zolana-prover.wasm") ||
+      (entry.asset === "wasm_exec.js" &&
+        entry.destination === "packages/web-prover/src/vendor/wasm_exec.js")
+    )
+  ) {
+    throw new Error("Invalid rebuilt Go bridge manifest");
+  }
+  const bytes = await readFile(join(bridgeDirectory, entry.asset));
+  verifyBytes(entry.asset, bytes, entry);
+  bridgeFiles.set(entry.destination, { entry, bytes });
+}
+if (bridgeFiles.size !== 2) throw new Error("Incomplete rebuilt Go bridge manifest");
 
 if (runtimeLock.format !== 1 || !/^\d+\.\d+\.\d+$/.test(runtimeLock.version)) {
   throw new Error("runtime.lock.json has an unsupported format or version");
@@ -27,7 +95,9 @@ if (!Array.isArray(runtimeManifest.files) || runtimeManifest.files.length === 0)
 }
 
 for (const entry of runtimeManifest.files) {
+  if (bridgeFiles.has(entry.destination)) continue;
   const destination = checkedDestination(entry.destination);
+  if (destination === undefined) continue;
   if (await existingFileMatches(destination, entry)) {
     console.log(`Using ${entry.destination}`);
     continue;
@@ -38,12 +108,17 @@ for (const entry of runtimeManifest.files) {
   console.log(`Installed ${entry.destination}`);
 }
 
+for (const [name, { entry, bytes }] of bridgeFiles) {
+  const destination = checkedDestination(name);
+  if (destination === undefined) continue;
+  if (!(await existingFileMatches(destination, entry))) await writeAtomically(destination, bytes);
+  console.log(`Using rebuilt Go bridge: ${name}`);
+}
+
 const keyManifest = {};
-for (const name of runtimeLock.requiredKeys) {
-  if (!/^[a-z0-9_-]+\.key$/.test(name)) throw new Error(`Invalid proving-key name: ${name}`);
+for (const name of selectedKeys) {
   const entry = provingKeysLock.keys[name];
-  if (!entry) throw new Error(`${name} is missing from the proving-key lockfile`);
-  const destination = join(root, "examples/browser/public/keys", name);
+  const destination = join(publicDirectory, "keys", name);
   if (!(await existingFileMatches(destination, entry))) {
     const bytes = await loadAsset(provingKeysBaseUrl, name);
     verifyBytes(name, bytes, entry);
@@ -56,7 +131,7 @@ for (const name of runtimeLock.requiredKeys) {
 }
 
 await writeAtomically(
-  join(root, "examples/browser/public/keys/manifest.json"),
+  join(publicDirectory, "keys/manifest.json"),
   Buffer.from(`${JSON.stringify(keyManifest, null, 2)}\n`),
 );
 console.log(`Ready to prove with runtime ${runtimeLock.version}.`);
@@ -72,6 +147,10 @@ function checkedDestination(value) {
   ];
   if (!allowed.some((prefix) => value.startsWith(prefix))) {
     throw new Error(`Runtime destination is outside generated asset directories: ${value}`);
+  }
+  if (standalone) {
+    if (value.startsWith("packages/web-prover/src/vendor/")) return undefined;
+    return resolve(publicDirectory, value.slice("examples/browser/public/".length));
   }
   const destination = resolve(root, value);
   const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;

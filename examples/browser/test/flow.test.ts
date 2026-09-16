@@ -116,7 +116,7 @@ it("refuses a mismatched note distribution before proving or submitting a transf
   const ctx = await context();
   const result = await runFlow(ctx, { notes: 2, reuseExistingNotes: true });
   expect(result.ok).toBe(false);
-  expect(result.error).toContain("Expected 2 equal plain SOL notes");
+  expect(result.error).toBe("Operation failed");
   expect(result.shape).toContain("transfer not proved");
   expect(buildTransferTransaction).not.toHaveBeenCalled();
   expect(buildWithdrawalTransaction).not.toHaveBeenCalled();

@@ -7,6 +7,9 @@
     "dist"
   ],
   "type": "module",
+  "bin": {
+    "zolana-prover-assets": "./dist/scripts/setup-assets.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,21 +17,14 @@
     }
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.build.json",
+    "build": "../../scripts/build-wasm.sh && vite build && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@heliuslabs/zolana": "0.1.6-alpha"
-  },
   "devDependencies": {
-    "@solana/kit": "^7.0.0",
     "@types/node": "^24.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
-  },
-  "peerDependencies": {
-    "@solana/kit": "^7.0.0"
   }
 }

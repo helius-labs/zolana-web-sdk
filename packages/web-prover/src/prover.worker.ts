@@ -19,6 +19,7 @@
 import "./vendor/wasm_exec.js";
 
 import type { WorkerRequest, WorkerResponse, WorkerFatal } from "./wasm-prover.js";
+import { operationError, WasmProverError } from "./errors.js";
 
 /** The API `cmd/prover-wasm` installs on `globalThis`. */
 interface ZolanaProverApi {
@@ -78,14 +79,14 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
 
   // Deliberately not awaited: the Go main blocks forever to keep its exported
   // callbacks alive, so this promise only settles when the instance dies.
-  const exited = (reason: unknown) => {
+  const exited = () => {
     api = undefined;
-    const error = reason instanceof Error ? reason : new Error("Zolana prover runtime exited");
+    const error = new WasmProverError("wasm_worker_failed");
     rejectReady(error);
-    const response: WorkerFatal = { fatal: true, error: error.message };
+    const response: WorkerFatal = { fatal: true, error: error.code };
     self.postMessage(response);
   };
-  void go.run(instance).then(() => exited(undefined), exited);
+  void go.run(instance).then(exited, exited);
 
   await ready;
   if (typeof __zolanaProver === "undefined") {
@@ -105,8 +106,7 @@ function requireApi(): ZolanaProverApi {
  */
 function unwrap(result: unknown): unknown {
   if (typeof result === "object" && result !== null && "error" in result) {
-    const message = (result as { error?: unknown }).error;
-    throw new Error(typeof message === "string" ? message : "prover returned an error");
+    throw new WasmProverError();
   }
   return result;
 }
@@ -147,11 +147,11 @@ self.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
         };
         self.postMessage(response);
       },
-      (error: unknown) => {
+      () => {
         const response: WorkerResponse = {
           id: request.id,
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: operationError(request.kind).code,
           ms: performance.now() - started,
         };
         self.postMessage(response);
