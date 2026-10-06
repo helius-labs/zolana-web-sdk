@@ -38,20 +38,20 @@ function entry(inputs: number, outputs: number, keyBytes: number): ShapeKey {
 
 /** Confidential (default transact) rail only, ring rail keys are out of scope. */
 export const TRANSFER_SHAPES: readonly ShapeKey[] = Object.freeze([
-  entry(1, 1, 8_623_201),
-  entry(1, 2, 9_316_797),
-  entry(2, 2, 16_493_758),
-  entry(2, 3, 16_928_800),
-  entry(3, 3, 24_811_267),
-  entry(4, 3, 30_597_221),
-  entry(4, 4, 31_036_650),
-  entry(5, 3, 36_740_505),
-  entry(5, 4, 37_179_245),
-  entry(1, 8, 13_503_202),
+  entry(1, 1, 8_592_737),
+  entry(1, 2, 9_268_057),
+  entry(2, 2, 16_407_295),
+  entry(2, 3, 16_911_010),
+  entry(3, 3, 24_928_985),
+  entry(4, 3, 30_852_203),
+  entry(4, 4, 31_361_454),
+  entry(5, 3, 36_956_845),
+  entry(5, 4, 37_464_519),
+  entry(1, 8, 13_695_140),
 ]);
 
 export const MERGE_KEY_FILE = "merge_8_1.key";
-export const MERGE_KEY_BYTES = 55_582_621;
+export const MERGE_KEY_BYTES = 55_767_611;
 
 /** The merge circuit as a ShapeKey, so one loader handles both proof kinds. */
 export const MERGE_SHAPE: ShapeKey = Object.freeze({
