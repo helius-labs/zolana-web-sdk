@@ -15,7 +15,6 @@ const required = [
   "examples/browser/public/prover/accelerator/gnark_kernel_bg.wasm",
   "examples/browser/public/prover/accelerator/LICENSE-APACHE",
   "examples/browser/public/prover/accelerator/LICENSE-MIT",
-  "examples/browser/public/fixtures/transfer-2x3.json",
   "packages/web-prover/src/vendor/wasm_exec.js",
 ];
 for (const path of required) {

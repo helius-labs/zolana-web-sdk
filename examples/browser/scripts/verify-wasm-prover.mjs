@@ -24,7 +24,7 @@ import {
   signTransactionWithSigners,
 } from "@solana/kit";
 import {
-  KeypairWalletAuthority,
+  LocalKeys,
   ShieldedKeypair,
   SigningKey,
   Wallet,
@@ -95,10 +95,7 @@ for (const a of [sender, receiver]) {
   if (reg !== undefined) await send(reg, [a.signer]);
 }
 const wallet = new Wallet({ identity: sender.keypair.shieldedAddress() });
-const authority = new KeypairWalletAuthority({
-  solanaPublicKey: sender.signer.address,
-  keypair: sender.keypair,
-});
+const keys = LocalKeys.fromKeypair(sender.keypair, client.proofService);
 const depositSlot = await send(
   await buildDepositTransaction({
     client,
@@ -108,11 +105,11 @@ const depositSlot = await send(
   }),
   [sender.signer],
 );
-await syncWallet({ client, wallet, authority, config: { requireSlot: depositSlot } });
+await syncWallet({ client, wallet, keys, config: { requireSlot: depositSlot } });
 await buildTransferTransaction({
   client,
   wallet,
-  authority,
+  keys,
   feePayer: sender.signer.address,
   recipient: receiver.signer.address,
   amount: BigInt(process.env.TRANSFER ?? "50000000"),

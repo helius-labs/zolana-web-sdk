@@ -1,12 +1,11 @@
 # Zolana Web SDK
 
-Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the Arkworks browser demo and a snapshot of the TypeScript protocol SDK it uses.
+Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the Arkworks browser demo.
 
 ## Packages
 
 - `@zolana/web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
-- `@heliuslabs/zolana` is the matching upstream TypeScript SDK snapshot used only by the example's transaction helpers; it is not a dependency of the packed prover.
-- `examples/browser` is the focused Arkworks UI for generating one proof or benchmarking five proofs locally.
+- `examples/browser` is the focused Arkworks UI for generating one proof or benchmarking five proofs locally. Its transaction helpers use the published `@heliuslabs/zolana@0.3.1-alpha`, the release whose `/prove` requests and proving keys the bridge matches (see [UPSTREAM.md](UPSTREAM.md)); the packed prover does not depend on it.
 - `wasm` is a self-contained Go module for the browser prover bridge.
 
 ## Setup
@@ -17,7 +16,7 @@ npm run setup
 npm run dev
 ```
 
-`npm run setup` builds the sanitized Go bridge with Go 1.25.7, then downloads and verifies the pinned accelerator, the 2-input/3-output proving key, and the demo request fixture. Source builds require Go; installed-package users need only Node.js and the asset command, not Go, Rust, Mopro or `wasm-pack`. Setup never restores the old pinned release's Go Wasm or shim.
+`npm run setup` builds the sanitized Go bridge with Go 1.27.1 and stages the demo request fixture, then downloads and verifies the pinned accelerator and the 2-input/3-output proving key. Source builds require Go; installed-package users need only Node.js and the asset command, not Go, Rust, Mopro or `wasm-pack`. Setup never restores the old pinned release's Go Wasm, shim or request fixture.
 
 The demo requires cross-origin isolation for the threaded Mopro kernel. Its Vite server already sends the required COOP/COEP headers.
 
@@ -31,7 +30,18 @@ npm run test:consumer
 
 The browser test starts and stops its own Vite server. Set `DEMO_URL` only when testing an already-running deployment.
 
-The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, and runs production-built Go and Arkworks proofs with malformed-witness privacy and recovery checks. It needs Chrome and the staged runtime/key assets. Existing protocol, Go, example and browser gates remain enabled.
+The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, and runs production-built Go and Arkworks proofs with malformed-witness privacy and recovery checks. It needs Chrome and the staged runtime/key assets. Existing Go, example and browser gates remain enabled.
+
+The opt-in devnet gate runs the example's shield, split, transfer and unshield flow through the published SDK. The packaged worker produces every proof locally, and the test fails unless each proof lands on-chain:
+
+```sh
+npm run build:prover
+ZOLANA_E2E_FUNDER=~/.config/solana/id.json \
+ZOLANA_E2E_RPC_URL="https://devnet.helius-rpc.com/?api-key=$API_KEY" \
+npm run test:e2e
+```
+
+The funder tops up two fresh wallets with 0.06 devnet SOL and receives the remainder back. Use a keyed RPC; the public devnet endpoint rate-limits confirmation polling.
 
 ## Runtime releases
 
@@ -47,7 +57,7 @@ npm run build:runtime -- 0.1.0 /tmp/mopro
 
 Maintainers can run the `Runtime release` GitHub Actions workflow instead. After publishing a new runtime, update the version, release URL, size, and SHA-256 in `runtime.lock.json` before changing the SDK default.
 
-For local development with already-built Mopro bindings and keys, `npm run stage:assets -- <MoproWasmBindings> <keys-directory> <transfer-2x3.json>` remains available.
+For local development with already-built Mopro bindings and keys, `npm run stage:assets -- <MoproWasmBindings> <keys-directory>` remains available.
 
 ## SDK
 
@@ -70,4 +80,4 @@ const localFetch = prover.createFetch();
 
 The worker starts automatically on first use. Pass an `AbortSignal` to cancel queued or active work. Active cancellation discards the runtime and its queue; later requests can restart through the retained factory. `terminate()` releases the runtime and clears that factory, so create a new instance or explicitly call `start(factory)` afterward.
 
-Flow, submission and benchmark helpers are in `examples/browser/src/{flow,submit,bench,sweep-amounts}.ts`; they are intentionally no longer core exports. The vendored protocol package is unchanged. The pinned accelerator release remains unchanged; builds package the sanitized Go bridge locally, without publishing or replacing a remote release.
+Flow, submission and benchmark helpers are in `examples/browser/src/{flow,submit,bench,sweep-amounts}.ts`; they are intentionally no longer core exports. The pinned accelerator release remains unchanged; builds package the sanitized Go bridge locally, without publishing or replacing a remote release.

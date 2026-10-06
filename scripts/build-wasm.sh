@@ -4,10 +4,11 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 module="$root/wasm"
 public="$root/examples/browser/public/prover"
+fixtures="$root/examples/browser/public/fixtures"
 vendor="$root/packages/web-prover/src/vendor"
 bridge="$root/dist/bridge"
-export GOTOOLCHAIN=go1.25.7
-mkdir -p "$public" "$vendor" "$bridge"
+export GOTOOLCHAIN=go1.27.1
+mkdir -p "$public" "$fixtures" "$vendor" "$bridge"
 
 goroot="$(cd "$module" && go env GOROOT)"
 shim=""
@@ -23,5 +24,7 @@ fi
 install -m 644 "$bridge/zolana-prover.wasm" "$public/zolana-prover.wasm"
 install -m 644 "$shim" "$bridge/wasm_exec.js"
 install -m 644 "$shim" "$vendor/wasm_exec.js"
+install -m 644 "$module/prover-wasm/testdata/transfer-2x3.json" "$bridge/transfer-2x3.json"
+install -m 644 "$bridge/transfer-2x3.json" "$fixtures/transfer-2x3.json"
 node "$root/scripts/package-bridge.mjs"
-echo "staged Go prover and matching runtime shim"
+echo "staged Go prover, matching runtime shim and request fixture"

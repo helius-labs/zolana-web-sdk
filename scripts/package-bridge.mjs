@@ -8,6 +8,7 @@ const files = [];
 for (const [asset, destination] of [
   ["zolana-prover.wasm", "examples/browser/public/prover/zolana-prover.wasm"],
   ["wasm_exec.js", "packages/web-prover/src/vendor/wasm_exec.js"],
+  ["transfer-2x3.json", "examples/browser/public/fixtures/transfer-2x3.json"],
 ]) {
   const bytes = await readFile(join(directory, asset));
   files.push({
