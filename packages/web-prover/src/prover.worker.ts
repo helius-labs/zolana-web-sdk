@@ -8,7 +8,7 @@
  * proving cost excludes postMessage and structured-clone overhead.
  */
 
-// The Go runtime shim, vendored here by build_prover_wasm.sh from the same
+// The Go runtime shim, vendored here by scripts/build-wasm.sh from the same
 // toolchain that built the .wasm (its js/wasm ABI is not stable across Go
 // releases, so the two must ship together).
 //
@@ -21,7 +21,7 @@ import "./vendor/wasm_exec.js";
 import type { WorkerRequest, WorkerResponse, WorkerFatal } from "./wasm-prover.js";
 import { operationError, WasmProverError } from "./errors.js";
 
-/** The API `cmd/prover-wasm` installs on `globalThis`. */
+/** The API `wasm/prover-wasm` installs on `globalThis`. */
 interface ZolanaProverApi {
   loadKey(fileName: string, key: Uint8Array): unknown;
   prove(requestJson: string): unknown;

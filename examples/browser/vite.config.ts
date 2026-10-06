@@ -17,19 +17,6 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5178,
     strictPort: true,
-    // Must match the /devnet/ paths deploy/nginx.conf proxies.
-    proxy: {
-      "/devnet/indexer": {
-        target: "http://zolnet-devnet-1779374825.eu-north-1.elb.amazonaws.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/devnet\/indexer/u, ""),
-      },
-      "/devnet/prover": {
-        target: "http://zolnet-devnet-1779374825.eu-north-1.elb.amazonaws.com:3001",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/devnet\/prover/u, ""),
-      },
-    },
     // Required for Mopro's shared-memory Rayon arithmetic workers.
     headers: isolationHeaders,
   },

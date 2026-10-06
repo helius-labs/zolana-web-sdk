@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 // Diagnostic wrapper around the shipped kernel; no arithmetic or UI changes.
 export async function profileKernel(driver, count) {
-  const shim = await readFile(new URL('../../core/src/vendor/wasm_exec.js', import.meta.url), 'utf8');
+  const shim = await readFile(new URL('../../../packages/web-prover/src/vendor/wasm_exec.js', import.meta.url), 'utf8');
   const code = shim + '\n(' + workerMain.toString() + ')();';
   await driver.manage().setTimeouts({ script: 180000 });
   return driver.executeAsyncScript(function(code, count, done) {
