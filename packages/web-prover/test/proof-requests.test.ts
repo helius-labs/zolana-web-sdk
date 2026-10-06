@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { observeProofRequests, proofRequestShape } from "../src/proof-requests.js";
+import { observeProofRequests, proofRequestShape, proveRoute } from "../src/proof-requests.js";
 
 it.each(["string", "request"])(
   "records the actual circuit shape from a %s without consuming the request body",
@@ -34,6 +34,30 @@ it("does not attribute other services' prove requests to the benchmark", async (
   });
   expect(shapes).not.toHaveBeenCalled();
   expect(downstream).toHaveBeenCalledTimes(1);
+});
+it("records shapes sent to a proving key's own path", async () => {
+  const shapes = vi.fn();
+  const downstream = vi.fn<typeof globalThis.fetch>(async () => Response.json({}));
+  const fetch = observeProofRequests(downstream, "http://localhost/prover", shapes);
+  await fetch("http://localhost/prover/prove/transfer_confidential_2_3", {
+    method: "POST",
+    body: '{"circuitType":"transfer-confidential","nInputs":2,"nOutputs":3}',
+  });
+  expect(shapes).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: "2x3" }));
+});
+it.each([
+  ["http://localhost/prover/prove", { kind: "prove" }],
+  ["http://localhost/prover/prove/", { kind: "unsupported" }],
+  ["http://localhost/prover/prove/merge_8_1", { kind: "prove", keyFile: "merge_8_1.key" }],
+  ["http://localhost/prover/prove/merge_8_1/indexed", { kind: "unsupported" }],
+  ["http://localhost/prover/prove/merge_8_1%2Findexed", { kind: "unsupported" }],
+  ["http://localhost/prover/prove/..%2Fhealth", { kind: "unsupported" }],
+  ["http://localhost/prover/proves", undefined],
+  ["http://localhost/prover/health", undefined],
+  ["http://localhost/other/prove/merge_8_1", undefined],
+  ["http://127.0.0.1/prover/prove", undefined],
+])("routes %s", (url, route) => {
+  expect(proveRoute(new URL(url), "http://localhost/prover/")).toEqual(route);
 });
 it("does not coerce malformed shape declarations", () => {
   expect(

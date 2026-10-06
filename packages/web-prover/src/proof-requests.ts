@@ -1,17 +1,38 @@
 import { keyForProveRequest, type ShapeKey } from "./shapes.js";
 import { abortable } from "./abortable.js";
 
+/**
+ * A request to the prover's proving route: the bare `/prove`, or a proving
+ * key's own `/prove/<key>` that later SDKs send each proof to. Any other path
+ * below `/prove`, such as `/prove/<key>/indexed`, is `unsupported`: it can carry
+ * a witness too, so it is never forwarded.
+ */
+export type ProveRoute =
+  | Readonly<{ kind: "prove"; keyFile?: string }>
+  | Readonly<{ kind: "unsupported" }>;
+
+/** How `url` addresses the prover at `proverUrl`; undefined if it is not a proving route. */
+export function proveRoute(url: URL, proverUrl: string): ProveRoute | undefined {
+  const endpoint = new URL(proverUrl);
+  const prove = `${endpoint.pathname.replace(/\/+$/u, "")}/prove`;
+  if (url.origin !== endpoint.origin) return undefined;
+  if (url.pathname === prove) return { kind: "prove" };
+  if (!url.pathname.startsWith(`${prove}/`)) return undefined;
+  const key = url.pathname.slice(prove.length + 1);
+  return /^[A-Za-z0-9_-]+$/u.test(key)
+    ? { kind: "prove", keyFile: `${key}.key` }
+    : { kind: "unsupported" };
+}
+
 /** Observe only public circuit metadata; never retain the witness body. */
 export function observeProofRequests(
   fetch: typeof globalThis.fetch,
   proverUrl: string,
   onShape: (shape: ShapeKey) => void,
 ): typeof globalThis.fetch {
-  const endpoint = new URL(proverUrl);
-  endpoint.pathname = `${endpoint.pathname.replace(/\/+$/u, "")}/prove`;
   return async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.origin === endpoint.origin && url.pathname === endpoint.pathname) {
+    if (proveRoute(url, proverUrl)?.kind === "prove") {
       const signal =
         init?.signal !== undefined
           ? (init.signal ?? undefined)
