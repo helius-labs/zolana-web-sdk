@@ -16,7 +16,7 @@ import type { Measurement } from "./measurement.js";
 import { operationError, WasmProverError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
 import { automaticProvingThreads } from "./proving-threads.js";
-import { proofRequestShape } from "./proof-requests.js";
+import { proofRequestShape, proveRoute } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
 
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
@@ -314,19 +314,15 @@ export class WasmProver {
   }
 
   /**
-   * A `fetch` for `ZolanaClientConfig.fetch`. Prover requests are answered from
-   * wasm; everything else is delegated, so one shim covers the whole client.
+   * A `fetch` for `ZolanaClientConfig.fetch`. Proof requests to `/prove` or
+   * `/prove/<key>` are answered from wasm, other paths below `/prove` are
+   * refused, and everything else is delegated, so one shim covers the client.
    */
   createFetch(): typeof globalThis.fetch {
-    const proverPath = new URL(this.#options.proverUrl);
-    proverPath.pathname = `${proverPath.pathname.replace(/\/+$/u, "")}/prove`;
     return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = requestUrl(input);
-      const isProve =
-        url !== undefined &&
-        url.origin === proverPath.origin &&
-        url.pathname === proverPath.pathname;
-      if (!isProve) return await this.#fetch(input as RequestInfo, init);
+      const route = url === undefined ? undefined : proveRoute(url, this.#options.proverUrl);
+      if (route === undefined) return await this.#fetch(input as RequestInfo, init);
 
       const signal =
         init?.signal !== undefined
@@ -336,8 +332,13 @@ export class WasmProver {
             : undefined;
       signal?.throwIfAborted();
       try {
+        if (route.kind === "unsupported") throw new WasmProverError("wasm_invalid_request");
         const body = await abortable(readBody(input, init), signal);
         if (body === undefined) throw new WasmProverError("wasm_invalid_request");
+        // A keyed path names the proving key; prove nothing the body does not match.
+        if (route.keyFile !== undefined && proofRequestShape(body)?.keyFile !== route.keyFile) {
+          throw new WasmProverError("wasm_invalid_request");
+        }
         const result = await this.proveRequest(body, signal);
         signal?.throwIfAborted();
         return new Response(result.proof, {

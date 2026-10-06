@@ -217,6 +217,34 @@ describe("fetch cancellation", () => {
     expect(TestWorker.instances).toHaveLength(0);
   });
 
+  it("answers a proving key's own path locally", async () => {
+    const { prover, fetch } = await fixture();
+    const response = await prover.createFetch()(`${endpoint}/transfer_confidential_2_3`, {
+      method: "POST",
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('{"proof":"test"}');
+    expect(fetch.mock.calls.map(([input]) => String(input))).not.toContain(
+      `${endpoint}/transfer_confidential_2_3`,
+    );
+    prover.terminate();
+  });
+
+  it.each([
+    ["another key's path", `${endpoint}/transfer_confidential_1_2`],
+    ["the indexed route", `${endpoint}/transfer_confidential_2_3/indexed`],
+  ])("refuses %s without proving or forwarding the witness", async (_, input) => {
+    const { prover, fetch } = await fixture();
+    const response = await prover.createFetch()(input, { method: "POST", body });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ code: "wasm_invalid_request" });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(TestWorker.instances).toHaveLength(0);
+  });
+
   it("rejects a pre-aborted signal before any key fetch or worker work", async () => {
     const { prover, fetch } = await fixture();
     const signal = AbortSignal.abort();

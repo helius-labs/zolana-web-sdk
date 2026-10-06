@@ -41,7 +41,7 @@ try {
 }
 ```
 
-`proveRequest` accepts the protocol's `/prove` JSON string and returns its proof JSON only after local verification. No transaction is built or sent. The bridge proves requests from `@heliuslabs/zolana` 0.3.1-alpha and reports each proof's `provingKeySha256`, which that SDK checks against its pinned keys. To connect it, pass `prover.createFetch()` as `fetch` and the same `proverUrl` to `createZolanaClient`, then prove through `LocalKeys.fromKeypair(keypair, client.proofService)`. Only that URL's exact `/prove` endpoint is intercepted; other requests are delegated to the configured fetch implementation. Request bodies stay local on the intercepted path.
+`proveRequest` accepts the protocol's `/prove` JSON string and returns its proof JSON only after local verification. No transaction is built or sent. The bridge proves requests from `@heliuslabs/zolana` 0.3.1-alpha and reports each proof's `provingKeySha256`, which that SDK checks against its pinned keys. To connect it, pass `prover.createFetch()` as `fetch` and the same `proverUrl` to `createZolanaClient`, then prove through `LocalKeys.fromKeypair(keypair, client.proofService)`. Requests to that URL's `/prove` or `/prove/<key>` endpoint are proved locally; a `<key>` that does not match the request body, and any other path below `/prove` (such as `/prove/<key>/indexed`), get a 500 and are never forwarded. All other requests are delegated to the configured fetch implementation.
 
 ## Select proving keys
 
