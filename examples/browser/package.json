@@ -10,17 +10,18 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:browser": "node scripts/test-mopro-browser.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@heliuslabs/zolana": "*",
-    "@solana-program/system": "^0.13.0",
-    "@solana/kit": "^7.0.0",
+    "@heliuslabs/zolana": "0.3.1-alpha",
+    "@solana/kit": "^8.3.0",
     "@zolana/web-prover": "*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@solana-program/system": "^0.14.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",

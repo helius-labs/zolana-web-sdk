@@ -52,30 +52,32 @@ for (const name of selectedKeys) {
   }
 }
 const bridgeDirectory = join(root, "dist/bridge");
+// The request fixture follows the circuits the bridge is built from, so it
+// replaces the release copy just as the rebuilt Go bridge does.
+const bridgeDestinations = new Map([
+  ["zolana-prover.wasm", "examples/browser/public/prover/zolana-prover.wasm"],
+  ["wasm_exec.js", "packages/web-prover/src/vendor/wasm_exec.js"],
+  ["transfer-2x3.json", "examples/browser/public/fixtures/transfer-2x3.json"],
+]);
 const bridgeManifest = JSON.parse(await readFile(join(bridgeDirectory, "manifest.json"), "utf8"));
 if (
   bridgeManifest.format !== 1 ||
   !Array.isArray(bridgeManifest.files) ||
-  bridgeManifest.files.length !== 2
+  bridgeManifest.files.length !== bridgeDestinations.size
 )
   throw new Error("Rebuilt Go bridge is missing; run npm run build:prover");
 const bridgeFiles = new Map();
 for (const entry of bridgeManifest.files) {
-  if (
-    !(
-      (entry.asset === "zolana-prover.wasm" &&
-        entry.destination === "examples/browser/public/prover/zolana-prover.wasm") ||
-      (entry.asset === "wasm_exec.js" &&
-        entry.destination === "packages/web-prover/src/vendor/wasm_exec.js")
-    )
-  ) {
+  if (bridgeDestinations.get(entry.asset) !== entry.destination) {
     throw new Error("Invalid rebuilt Go bridge manifest");
   }
   const bytes = await readFile(join(bridgeDirectory, entry.asset));
   verifyBytes(entry.asset, bytes, entry);
   bridgeFiles.set(entry.destination, { entry, bytes });
 }
-if (bridgeFiles.size !== 2) throw new Error("Incomplete rebuilt Go bridge manifest");
+if (bridgeFiles.size !== bridgeDestinations.size) {
+  throw new Error("Incomplete rebuilt Go bridge manifest");
+}
 
 if (runtimeLock.format !== 1 || !/^\d+\.\d+\.\d+$/.test(runtimeLock.version)) {
   throw new Error("runtime.lock.json has an unsupported format or version");

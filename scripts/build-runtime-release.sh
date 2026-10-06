@@ -6,9 +6,7 @@ version="${1:-}"
 mopro="${2:-}"
 mopro_revision="2bb184c23463d6415ebb5c9110bfd779df910d2f"
 rust_toolchain="nightly-2025-11-15"
-go_toolchain="go1.25.7"
-fixture_revision="c8888cdbde29fe53d3a3af587cd6164fda79fab2"
-fixture_sha256="074f0e453ac8a50063118521e754f418f036a31f7887266fe3f7f3d8ea6d9da5"
+go_toolchain="go1.27.1"
 
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || -z "$mopro" ]]; then
   echo "Usage: npm run build:runtime -- <version> <pinned-mopro-checkout>" >&2
@@ -29,7 +27,6 @@ trap 'rm -rf "$work"' EXIT
 staging="$work/staging"
 mkdir -p \
   "$staging/examples/browser/public/prover/accelerator" \
-  "$staging/examples/browser/public/fixtures" \
   "$staging/packages/web-prover/src/vendor"
 
 echo "Building the Zolana Go prover..."
@@ -55,21 +52,6 @@ install -m 644 "$work/accelerator/gnark_kernel_bg.wasm" "$staging/examples/brows
 cp -R "$work/accelerator/snippets" "$staging/examples/browser/public/prover/accelerator/snippets"
 install -m 644 "$accelerator/ark-bn254/LICENSE-APACHE" "$staging/examples/browser/public/prover/accelerator/LICENSE-APACHE"
 install -m 644 "$accelerator/ark-bn254/LICENSE-MIT" "$staging/examples/browser/public/prover/accelerator/LICENSE-MIT"
-
-fixture="$work/transfer-2x3.json"
-if [[ -n "${ZOLANA_FIXTURE_PATH:-}" ]]; then
-  install -m 644 "$ZOLANA_FIXTURE_PATH" "$fixture"
-else
-  curl --fail --location --silent --show-error \
-    "https://raw.githubusercontent.com/helius-labs/zolana-mobile-sdk/$fixture_revision/fixtures/prove-request-2x3.json" \
-    --output "$fixture"
-fi
-actual_fixture_sha256="$(node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$fixture")"
-if [[ "$actual_fixture_sha256" != "$fixture_sha256" ]]; then
-  echo "Demo fixture failed SHA-256 verification" >&2
-  exit 1
-fi
-install -m 644 "$fixture" "$staging/examples/browser/public/fixtures/transfer-2x3.json"
 
 output="$root/dist/runtime-v$version"
 ZOLANA_REVISION="${ZOLANA_REVISION:-$(git -C "$root" rev-parse HEAD)}" \

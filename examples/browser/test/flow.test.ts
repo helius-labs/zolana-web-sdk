@@ -19,7 +19,7 @@ import {
   Utxo,
   Data,
   SOL_MINT,
-  KeypairWalletAuthority,
+  LocalKeys,
   type Bytes32,
 } from "@heliuslabs/zolana";
 import { runFlow, proverMeasurementSink, type FlowContext } from "../src/flow.js";
@@ -78,7 +78,7 @@ async function context(): Promise<FlowContext> {
     client,
     signer,
     wallet,
-    authority: new KeypairWalletAuthority({ keypair, solanaPublicKey: signer.address }),
+    keys: LocalKeys.fromKeypair(keypair, client.proofService),
     shieldedAddress: keypair.shieldedAddress(),
     transferRecipient: signer.address,
     withdrawalRecipient: signer.address,

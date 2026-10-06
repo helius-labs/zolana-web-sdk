@@ -27,7 +27,7 @@ import {
   type ShieldedAddress,
   type TransferDestination,
   type Wallet,
-  type WalletAuthority,
+  type WalletKeys,
 } from "@heliuslabs/zolana";
 import type { Address } from "@heliuslabs/zolana";
 import type { Transaction } from "@solana/kit";
@@ -90,7 +90,7 @@ export interface FlowContext {
     Parameters<typeof syncWallet>[0]["client"] &
     SubmitClient;
   readonly wallet: Wallet;
-  readonly authority: WalletAuthority;
+  readonly keys: WalletKeys;
   readonly shieldedAddress: ShieldedAddress;
   /** Funds and pays for every leg, and signs the submitted transactions. */
   readonly signer: Signer & { readonly address: Address };
@@ -158,7 +158,7 @@ export async function runFlow(context: FlowContext, options: FlowOptions): Promi
     syncWallet({
       client: context.client,
       wallet: context.wallet,
-      authority: context.authority,
+      keys: context.keys,
       config: landedSlot === undefined ? {} : { requireSlot: landedSlot },
     });
 
@@ -198,7 +198,7 @@ export async function runFlow(context: FlowContext, options: FlowOptions): Promi
           const transaction = await buildSplitTransaction({
             client: context.client,
             wallet: context.wallet,
-            authority: context.authority,
+            keys: context.keys,
             feePayer: context.signer.address,
             parts: notes,
           });
@@ -234,7 +234,7 @@ export async function runFlow(context: FlowContext, options: FlowOptions): Promi
         const transaction = await buildTransferTransaction({
           client: context.client,
           wallet: context.wallet,
-          authority: context.authority,
+          keys: context.keys,
           feePayer: context.signer.address,
           recipient: context.transferRecipient,
           amount: amounts.transfer,
@@ -253,7 +253,7 @@ export async function runFlow(context: FlowContext, options: FlowOptions): Promi
         const transaction = await buildWithdrawalTransaction({
           client: context.client,
           wallet: context.wallet,
-          authority: context.authority,
+          keys: context.keys,
           feePayer: context.signer.address,
           recipient: context.withdrawalRecipient,
           amount: amounts.withdrawal,

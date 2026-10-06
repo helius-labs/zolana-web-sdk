@@ -37,6 +37,11 @@ async function fixture(context, destination = "examples/browser/public/prover/te
           destination: "examples/browser/public/prover/zolana-prover.wasm",
           ...digest(bytes),
         },
+        {
+          asset: "old-fixture.json",
+          destination: "examples/browser/public/fixtures/transfer-2x3.json",
+          ...digest(bytes),
+        },
       ],
     }),
   );
@@ -49,6 +54,7 @@ async function fixture(context, destination = "examples/browser/public/prover/te
   for (const [asset, destination] of [
     ["zolana-prover.wasm", "examples/browser/public/prover/zolana-prover.wasm"],
     ["wasm_exec.js", "packages/web-prover/src/vendor/wasm_exec.js"],
+    ["transfer-2x3.json", "examples/browser/public/fixtures/transfer-2x3.json"],
   ]) {
     await writeFile(join(root, "dist/bridge", asset), Buffer.from("rebuilt sanitized bridge"));
     bridgeFiles.push({ asset, destination, ...digest(Buffer.from("rebuilt sanitized bridge")) });
@@ -102,6 +108,10 @@ test("standalone setup uses pinned local assets without requiring the source tre
     await readFile(join(output, "prover/zolana-prover.wasm"), "utf8"),
     "rebuilt sanitized bridge",
   );
+  assert.equal(
+    await readFile(join(output, "fixtures/transfer-2x3.json"), "utf8"),
+    "rebuilt sanitized bridge",
+  );
   assert.deepEqual(JSON.parse(await readFile(join(output, "keys/manifest.json"), "utf8")), {
     "transfer_confidential_2_3.key": digest(bytes),
   });
@@ -135,6 +145,15 @@ test("standalone setup refuses corrupt bundled Go bytes instead of restoring the
   const { root, run } = await fixture(context);
   await writeFile(join(root, "dist/bridge/zolana-prover.wasm"), "corrupt");
   assert.notEqual(run().status, 0);
+});
+
+test("standalone setup refuses a bridge manifest without the request fixture", async (context) => {
+  const { root, run } = await fixture(context);
+  const path = join(root, "dist/bridge/manifest.json");
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  manifest.files = manifest.files.filter((entry) => entry.asset !== "transfer-2x3.json");
+  await writeFile(path, JSON.stringify(manifest));
+  assert.match(run().stderr, /Rebuilt Go bridge is missing/);
 });
 
 test("explicit keys replace the demo default and emit only the selected locked digests", async (context) => {

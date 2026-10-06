@@ -3,9 +3,9 @@ import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const [bindings, keysDirectory, samplePath] = process.argv.slice(2);
-if (!bindings || !keysDirectory || !samplePath) {
-  throw new Error("Usage: npm run stage:assets -- <MoproWasmBindings> <keys-directory> <transfer-2x3.json>");
+const [bindings, keysDirectory] = process.argv.slice(2);
+if (!bindings || !keysDirectory) {
+  throw new Error("Usage: npm run stage:assets -- <MoproWasmBindings> <keys-directory>");
 }
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -13,12 +13,6 @@ const publicDirectory = join(root, "examples/browser/public");
 const accelerator = join(resolve(bindings), "gnark/accelerator");
 for (const file of ["gnark_kernel.js", "gnark_kernel_bg.wasm", "LICENSE-APACHE", "LICENSE-MIT"]) {
   if (!(await stat(join(accelerator, file))).isFile()) throw new Error(`Missing Mopro artifact: ${file}`);
-}
-
-const sample = await readFile(resolve(samplePath), "utf8");
-const request = JSON.parse(sample);
-if (request.circuitType !== "transfer-confidential" || request.nInputs !== 2 || request.nOutputs !== 3) {
-  throw new Error("Expected a transfer-confidential 2x3 request fixture");
 }
 
 const lock = JSON.parse(await readFile(join(root, "wasm/prover/provingkeys/proving-keys.lock"), "utf8"));
@@ -43,9 +37,7 @@ if (!available.some(({ name }) => name === "transfer_confidential_2_3.key")) {
 
 await mkdir(join(publicDirectory, "prover"), { recursive: true });
 await mkdir(join(publicDirectory, "keys"), { recursive: true });
-await mkdir(join(publicDirectory, "fixtures"), { recursive: true });
 await cp(accelerator, join(publicDirectory, "prover/accelerator"), { recursive: true });
 for (const { source, name } of available) await cp(source, join(publicDirectory, "keys", name));
 await writeFile(join(publicDirectory, "keys/manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-await writeFile(join(publicDirectory, "fixtures/transfer-2x3.json"), sample);
-console.log(`Staged Mopro, ${available.length} proving key(s), and the request fixture.`);
+console.log(`Staged Mopro and ${available.length} proving key(s).`);
