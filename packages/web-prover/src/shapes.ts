@@ -6,7 +6,7 @@
  * capacity first, so the order doubles as the smallest-fit search order.
  *
  * The sizes below exist only so the UI can total them before fetching anything.
- * `keys/manifest.json`, generated from `proving-keys.lock` by `just poc-keys`, is
+ * `keys/manifest.json`, generated from `proving-keys.lock` by `zolana-prover-assets`, is
  * what a downloaded key is actually validated against -- a key rotation changes
  * every size and digest, and a copy in source silently goes stale across a
  * rebase.

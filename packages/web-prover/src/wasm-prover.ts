@@ -46,7 +46,7 @@ export type WorkerResponse = Readonly<{
 }>;
 
 export interface WasmProverOptions {
-  /** URL of `zolana-prover.wasm` (built by `build_prover_wasm.sh`). */
+  /** URL of `zolana-prover.wasm`, as installed by `zolana-prover-assets`. */
   readonly wasmUrl: string;
   /** Omit to choose automatically; zero selects the original Go prover. */
   readonly threads?: number;
@@ -247,7 +247,7 @@ export class WasmProver {
   }
 
   /**
-   * The digests `just poc-keys` copied out of `proving-keys.lock`.
+   * The digests `zolana-prover-assets` copied out of `proving-keys.lock`.
    *
    * Fetched once and required: a key rotation changes every size and digest, and
    * validating against anything other than the lockfile lets a stale key through.
