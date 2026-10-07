@@ -14,7 +14,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@heliuslabs/zolana": "0.3.1-alpha",
+    "@heliuslabs/zolana": "0.4.0-alpha",
     "@solana/kit": "^8.3.0",
     "@zolana/web-prover": "*",
     "react": "^19.2.0",

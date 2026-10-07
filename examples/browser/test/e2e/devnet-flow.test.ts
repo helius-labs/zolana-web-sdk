@@ -40,7 +40,7 @@ const funderPath = process.env["ZOLANA_E2E_FUNDER"];
 const endpoints = {
   solanaRpcUrl: process.env["ZOLANA_E2E_RPC_URL"] ?? "https://api.devnet.solana.com",
   indexerUrl: process.env["ZOLANA_E2E_INDEXER_URL"] ?? "https://d2xah7tnhdhcom.cloudfront.net",
-  // Only `/prove` is answered locally; any other prover route still reaches it.
+  // `/prove/<key>` is answered locally; any other prover route still reaches it.
   proverUrl: process.env["ZOLANA_E2E_PROVER_URL"] ?? "https://d21ni15goiip6l.cloudfront.net",
 };
 const root = new URL("../../../../", import.meta.url);
@@ -73,7 +73,7 @@ it.skipIf(funderPath === undefined)(
       fetch: async (input, init) => {
         const url = input instanceof Request ? input.url : String(input);
         if (url === `${keyBaseUrl}/manifest.json`) return Response.json(keyLock.keys);
-        if (new URL(url).pathname.endsWith("/prove")) remoteProve.push(url);
+        if (/\/prove(\/|$)/u.test(new URL(url).pathname)) remoteProve.push(url);
         return fetch(input, init);
       },
       onMeasurement: (measurement) => {
@@ -84,7 +84,12 @@ it.skipIf(funderPath === undefined)(
         proverMeasurementSink(measurement);
       },
     });
-    const client = await createZolanaClient({ ...endpoints, fetch: prover.createFetch() });
+    // A local prover cannot answer `/prove/<key>/indexed`, so the client fetches proof data itself.
+    const client = await createZolanaClient({
+      ...endpoints,
+      proofDataSource: "client",
+      fetch: prover.createFetch(),
+    });
     const funder = await createKeyPairSignerFromBytes(
       Uint8Array.from(JSON.parse(readFileSync(funderPath ?? "", "utf8")) as number[]),
     );
@@ -116,6 +121,16 @@ it.skipIf(funderPath === undefined)(
     // Split (1 into 2), the 2-input transfer and the withdrawal.
     expect(local.proofs).toBe(3);
     expect(remoteProve).toEqual([]);
+
+    const landed = await client.solanaRpc
+      .getSignaturesForAddress(sender.signer.address)
+      .send();
+    console.info(
+      `sender ${sender.signer.address} signatures, oldest first:\n${landed
+        .map((entry) => `  ${entry.signature}${entry.err === null ? "" : " (failed)"}`)
+        .reverse()
+        .join("\n")}`,
+    );
   },
   600_000,
 );

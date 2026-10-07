@@ -2,7 +2,7 @@
  * Local proving in the browser, wired into the SDK without patching it.
  *
  * `ProverClient` takes an injectable `fetch`, and the wasm module's `prove`
- * accepts and returns exactly the JSON a `POST /prove` exchange uses (it mirrors
+ * accepts and returns exactly the JSON a `POST /prove/<key>` exchange uses (it mirrors
  * `server.processProofSync`). So the whole integration is a `fetch` that
  * recognizes the prover URL and answers it from wasm instead of the network.
  * Everything else -- indexer calls, Solana RPC -- falls through untouched.
@@ -314,9 +314,9 @@ export class WasmProver {
   }
 
   /**
-   * A `fetch` for `ZolanaClientConfig.fetch`. Proof requests to `/prove` or
-   * `/prove/<key>` are answered from wasm, other paths below `/prove` are
-   * refused, and everything else is delegated, so one shim covers the client.
+   * A `fetch` for `ZolanaClientConfig.fetch`. Proof requests to `/prove/<key>`
+   * are answered from wasm, other paths below `/prove` are refused, and
+   * everything else is delegated, so one shim covers the client.
    */
   createFetch(): typeof globalThis.fetch {
     return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -335,8 +335,8 @@ export class WasmProver {
         if (route.kind === "unsupported") throw new WasmProverError("wasm_invalid_request");
         const body = await abortable(readBody(input, init), signal);
         if (body === undefined) throw new WasmProverError("wasm_invalid_request");
-        // A keyed path names the proving key; prove nothing the body does not match.
-        if (route.keyFile !== undefined && proofRequestShape(body)?.keyFile !== route.keyFile) {
+        // The path names the proving key; prove nothing the body does not match.
+        if (proofRequestShape(body)?.keyFile !== route.keyFile) {
           throw new WasmProverError("wasm_invalid_request");
         }
         const result = await this.proveRequest(body, signal);
