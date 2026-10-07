@@ -7,7 +7,7 @@ declare global {
 }
 
 window.checkPackedProver = async () => {
-  const request = await (await fetch("/fixtures/transfer-2x3.json")).json();
+  const request = await (await fetch("/fixtures/transfer-2x2.json")).json();
   const sentinel = "review-private-sentinel";
   const measurements: Measurement[] = [];
   const results: unknown[] = [];
@@ -63,7 +63,7 @@ window.checkPackedProver = async () => {
           rejected = true;
         }
         if (!rejected) throw new Error("Malformed witness accepted");
-        const response = await prover.createFetch()(location.origin + "/local/prove", {
+        const response = await prover.createFetch()(location.origin + "/local/prove/transfer_confidential_2_2", {
           method: "POST",
           body: JSON.stringify(invalid),
         });

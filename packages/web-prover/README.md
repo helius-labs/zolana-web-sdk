@@ -9,7 +9,7 @@ npm install @zolana/web-prover
 npx --no-install zolana-prover-assets --output public
 ```
 
-The package contains the worker, the rebuilt Go Wasm bridge and its matching runtime shim. Proving keys and the threaded accelerator stay outside the core package. The asset command installs the bundled, sanitized Go bridge and sample request plus the pinned accelerator and 2-input/3-output key into your app's public directory. It checks the bundled bridge's manifest and verifies the release manifest's SHA-256 and size, then each downloaded file and key against the packaged lockfiles. It never installs the older Go bridge, shim or sample request from that release. It needs Node.js and network access, but no Go or Rust. Installation itself does not run downloads. For a local mirror, set `ZOLANA_RUNTIME_BASE_URL` and `ZOLANA_KEYS_BASE_URL` to `file:///.../` directories containing the release assets and keys respectively; the same digest checks apply.
+The package contains the worker, the rebuilt Go Wasm bridge and its matching runtime shim. Proving keys and the threaded accelerator stay outside the core package. The asset command installs the bundled, sanitized Go bridge and sample request plus the pinned accelerator and 2-input/2-output key into your app's public directory. It checks the bundled bridge's manifest and verifies the release manifest's SHA-256 and size, then each downloaded file and key against the packaged lockfiles. It never installs the older Go bridge, shim or sample request from that release. It needs Node.js and network access, but no Go or Rust. Installation itself does not run downloads. For a local mirror, set `ZOLANA_RUNTIME_BASE_URL` and `ZOLANA_KEYS_BASE_URL` to `file:///.../` directories containing the release assets and keys respectively; the same digest checks apply.
 
 Serve `public/prover`, `public/keys` and, for the demo, `public/fixtures` without flattening the accelerator's `snippets` directory. Serve `.wasm` as `application/wasm`, `.js` as JavaScript, and the document with:
 
@@ -32,7 +32,7 @@ const prover = new ZolanaWebProver({
 });
 
 try {
-  const requestJson = await (await fetch("/fixtures/transfer-2x3.json")).text();
+  const requestJson = await (await fetch("/fixtures/transfer-2x2.json")).text();
   const { proof, proveMs, verifyMs } = await prover.proveRequest(requestJson);
 } catch (error) {
   if (error instanceof WasmProverError) console.error(error.code);
@@ -45,10 +45,10 @@ try {
 
 ## Select proving keys
 
-Without `--keys`, the asset command installs only the demo's 2x3 key. Real transfer shapes may differ (for example, 1x2). Select all shapes your application's actual requests need:
+Without `--keys`, the asset command installs only the demo's 2x2 key. Real transfer shapes may differ (for example, 1x2). Select all shapes your application's actual requests need:
 
 ```sh
-npx --no-install zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_3.key
+npx --no-install zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key
 ```
 
 `--keys` replaces the default selection and writes `keys/manifest.json` for exactly that list. Names must be supported confidential-transfer keys or `merge_8_1.key` present in the pinned proving-keys lockfile; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key/manifest entry fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list.

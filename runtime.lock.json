@@ -7,8 +7,8 @@
     "size": 2721,
     "sha256": "a3402ca0f9541ec54f61c14bf68ca75022ee3e48a2f9f54cb1a664af24d9287d"
   },
-  "provingKeysBaseUrl": "https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/6f90b6cbda966596/",
+  "provingKeysBaseUrl": "https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/3a1c88f90f609eb1/",
   "requiredKeys": [
-    "transfer_confidential_2_3.key"
+    "transfer_confidential_2_2.key"
   ]
 }

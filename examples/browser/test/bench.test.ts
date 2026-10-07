@@ -9,6 +9,6 @@ it("does not serialize unknown error messages, details or causes into run record
   });
   for (const value of [error, sentinel, { details: sentinel }]) {
     expect(describeError(value)).toBe("Operation failed");
-    expect(JSON.stringify(new RunRecorder("2x3", "wasm").finish(value))).not.toContain(sentinel);
+    expect(JSON.stringify(new RunRecorder("2x2", "wasm").finish(value))).not.toContain(sentinel);
   }
 });

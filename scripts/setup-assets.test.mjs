@@ -39,7 +39,7 @@ async function fixture(context, destination = "examples/browser/public/prover/te
         },
         {
           asset: "old-fixture.json",
-          destination: "examples/browser/public/fixtures/transfer-2x3.json",
+          destination: "examples/browser/public/fixtures/transfer-2x2.json",
           ...digest(bytes),
         },
       ],
@@ -47,14 +47,14 @@ async function fixture(context, destination = "examples/browser/public/prover/te
   );
   await writeFile(join(root, "release/runtime.wasm"), bytes);
   await writeFile(join(root, "release/manifest.json"), manifest);
-  await writeFile(join(root, "release/transfer_confidential_2_3.key"), bytes);
+  await writeFile(join(root, "release/transfer_confidential_2_2.key"), bytes);
   await writeFile(join(root, "release/transfer_confidential_1_2.key"), bytes);
   await writeFile(join(root, "release/merge_8_1.key"), bytes);
   const bridgeFiles = [];
   for (const [asset, destination] of [
     ["zolana-prover.wasm", "examples/browser/public/prover/zolana-prover.wasm"],
     ["wasm_exec.js", "packages/web-prover/src/vendor/wasm_exec.js"],
-    ["transfer-2x3.json", "examples/browser/public/fixtures/transfer-2x3.json"],
+    ["transfer-2x2.json", "examples/browser/public/fixtures/transfer-2x2.json"],
   ]) {
     await writeFile(join(root, "dist/bridge", asset), Buffer.from("rebuilt sanitized bridge"));
     bridgeFiles.push({ asset, destination, ...digest(Buffer.from("rebuilt sanitized bridge")) });
@@ -72,14 +72,14 @@ async function fixture(context, destination = "examples/browser/public/prover/te
       baseUrl,
       provingKeysBaseUrl: baseUrl,
       manifest: { asset: "manifest.json", ...digest(manifest) },
-      requiredKeys: ["transfer_confidential_2_3.key"],
+      requiredKeys: ["transfer_confidential_2_2.key"],
     }),
   );
   await writeFile(
     join(root, "wasm/prover/provingkeys/proving-keys.lock"),
     JSON.stringify({
       keys: {
-        "transfer_confidential_2_3.key": digest(bytes),
+        "transfer_confidential_2_2.key": digest(bytes),
         "transfer_confidential_1_2.key": digest(bytes),
         "merge_8_1.key": digest(bytes),
         "batch_address-append_40_10.key": digest(bytes),
@@ -109,11 +109,11 @@ test("standalone setup uses pinned local assets without requiring the source tre
     "rebuilt sanitized bridge",
   );
   assert.equal(
-    await readFile(join(output, "fixtures/transfer-2x3.json"), "utf8"),
+    await readFile(join(output, "fixtures/transfer-2x2.json"), "utf8"),
     "rebuilt sanitized bridge",
   );
   assert.deepEqual(JSON.parse(await readFile(join(output, "keys/manifest.json"), "utf8")), {
-    "transfer_confidential_2_3.key": digest(bytes),
+    "transfer_confidential_2_2.key": digest(bytes),
   });
   await assert.rejects(readFile(join(root, "packages/web-prover/src/vendor/wasm_exec.js")), {
     code: "ENOENT",
@@ -151,7 +151,7 @@ test("standalone setup refuses a bridge manifest without the request fixture", a
   const { root, run } = await fixture(context);
   const path = join(root, "dist/bridge/manifest.json");
   const manifest = JSON.parse(await readFile(path, "utf8"));
-  manifest.files = manifest.files.filter((entry) => entry.asset !== "transfer-2x3.json");
+  manifest.files = manifest.files.filter((entry) => entry.asset !== "transfer-2x2.json");
   await writeFile(path, JSON.stringify(manifest));
   assert.match(run().stderr, /Rebuilt Go bridge is missing/);
 });
@@ -165,7 +165,7 @@ test("explicit keys replace the demo default and emit only the selected locked d
     "merge_8_1.key": digest(bytes),
   });
   assert.deepEqual(await readFile(join(output, "keys/transfer_confidential_1_2.key")), bytes);
-  await assert.rejects(readFile(join(output, "keys/transfer_confidential_2_3.key")), {
+  await assert.rejects(readFile(join(output, "keys/transfer_confidential_2_2.key")), {
     code: "ENOENT",
   });
 });

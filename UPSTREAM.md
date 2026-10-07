@@ -13,6 +13,6 @@ Local changes to preserve when re-extracting:
 
 - `common.FromHex` returns a fixed error that does not echo its input.
 - Go tests read cross-language vectors from `wasm/test-vectors`, copied from the upstream root `test-vectors` and, for `indexed-proof.json`, `sdk-libs/fixtures`.
-- `wasm/circuits/spp_transaction/shared/web_fixture_test.go` is not upstream. It writes `wasm/prover-wasm/testdata/transfer-2x3.json`, a deterministic satisfying 2x3 request built with upstream's test helpers: `WEB_FIXTURE=$PWD/prover-wasm/testdata/transfer-2x3.json go test ./circuits/spp_transaction/shared -run TestWriteWebFixture` from `wasm`.
+- `wasm/circuits/spp_transaction/shared/web_fixture_test.go` is not upstream. It writes `wasm/prover-wasm/testdata/transfer-2x2.json`, a deterministic satisfying 2x2 request built with upstream's test helpers: `WEB_FIXTURE=$PWD/prover-wasm/testdata/transfer-2x2.json go test ./circuits/spp_transaction/shared -run TestWriteWebFixture` from `wasm`.
 
 The standalone package name, worker factory, workspace scripts, import paths, and asset staging paths are maintained here.

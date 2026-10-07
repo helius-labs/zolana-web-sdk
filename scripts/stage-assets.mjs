@@ -31,8 +31,8 @@ for (const [name, entry] of Object.entries(lock.keys)) {
   if (bytes.length !== entry.size || digest !== entry.sha256) throw new Error(`${name} does not match the pinned lockfile`);
   available.push({ name, source });
 }
-if (!available.some(({ name }) => name === "transfer_confidential_2_3.key")) {
-  throw new Error("transfer_confidential_2_3.key is required");
+if (!available.some(({ name }) => name === "transfer_confidential_2_2.key")) {
+  throw new Error("transfer_confidential_2_2.key is required");
 }
 
 await mkdir(join(publicDirectory, "prover"), { recursive: true });

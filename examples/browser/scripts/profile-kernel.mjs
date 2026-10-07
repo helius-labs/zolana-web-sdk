@@ -44,12 +44,12 @@ function workerMain() {
       await ready;
       const api = globalThis.__zolanaProver;
       const unwrap = result => { if (result.error) throw new Error(result.error); return result; };
-      const file = 'transfer_confidential_2_3.key';
+      const file = 'transfer_confidential_2_2.key';
       const manifest = await (await fetch(base + '/keys/manifest.json')).json();
       const key = new Uint8Array(await (await fetch(base + '/keys/' + file)).arrayBuffer());
       const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', key))].map(b => b.toString(16).padStart(2, '0')).join('');
       if (key.length !== manifest[file].size || digest !== manifest[file].sha256) throw new Error('Key digest mismatch');
-      const request = await (await fetch(base + '/fixtures/transfer-2x3.json')).text();
+      const request = await (await fetch(base + '/fixtures/transfer-2x2.json')).text();
       const prepare = unwrap(api.loadKey(file, key));
       const warmups = [], samples = [];
       for (let i = 0; i < 18; i++) {
