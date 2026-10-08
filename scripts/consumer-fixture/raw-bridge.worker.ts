@@ -30,7 +30,7 @@ globalThis.addEventListener("message", async (event: MessageEvent<string>) => {
       api.prove(event.data),
       api.verify(event.data, "{}"),
       api.prove('{"circuitType":"review-private-sentinel"}'),
-      api.loadKey("transfer_confidential_2_3.key", "review-private-sentinel"),
+      api.loadKey("transfer_confidential_2_2.key", "review-private-sentinel"),
     ];
     globalThis.postMessage({ failures });
   } catch {

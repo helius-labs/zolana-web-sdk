@@ -71,7 +71,7 @@ try {
   }
   await command(
     join(consumer, "node_modules/.bin/zolana-prover-assets"),
-    ["--output", join(consumer, "public"), "--keys", "transfer_confidential_2_3.key"],
+    ["--output", join(consumer, "public"), "--keys", "transfer_confidential_2_2.key"],
     consumer,
   );
   assert.deepEqual(

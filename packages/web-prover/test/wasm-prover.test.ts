@@ -9,8 +9,9 @@ import {
 import type { Measurement } from "../src/measurement.js";
 import { TRANSFER_SHAPES } from "../src/shapes.js";
 
-const body = JSON.stringify({ circuitType: "transfer-confidential", nInputs: 2, nOutputs: 3 });
-const endpoint = "http://localhost:3001/prove";
+const body = JSON.stringify({ circuitType: "transfer-confidential", nInputs: 2, nOutputs: 2 });
+const proveBase = "http://localhost:3001/prove";
+const endpoint = `${proveBase}/transfer_confidential_2_2`;
 const key = new Uint8Array([1, 2, 3]);
 const factory = () => new Worker("test-worker");
 
@@ -219,7 +220,7 @@ describe("fetch cancellation", () => {
 
   it("answers a proving key's own path locally", async () => {
     const { prover, fetch } = await fixture();
-    const response = await prover.createFetch()(`${endpoint}/transfer_confidential_2_3`, {
+    const response = await prover.createFetch()(endpoint, {
       method: "POST",
       body,
     });
@@ -227,14 +228,14 @@ describe("fetch cancellation", () => {
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('{"proof":"test"}');
     expect(fetch.mock.calls.map(([input]) => String(input))).not.toContain(
-      `${endpoint}/transfer_confidential_2_3`,
+      endpoint,
     );
     prover.terminate();
   });
 
   it.each([
-    ["another key's path", `${endpoint}/transfer_confidential_1_2`],
-    ["the indexed route", `${endpoint}/transfer_confidential_2_3/indexed`],
+    ["another key's path", `${proveBase}/transfer_confidential_1_2`],
+    ["the indexed route", `${endpoint}/indexed`],
   ])("refuses %s without proving or forwarding the witness", async (_, input) => {
     const { prover, fetch } = await fixture();
     const response = await prover.createFetch()(input, { method: "POST", body });

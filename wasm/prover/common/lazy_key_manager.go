@@ -2,7 +2,9 @@ package common
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"zolana/prover/logging"
@@ -253,57 +255,130 @@ func (m *LazyKeyManager) keyPath(filename string) string {
 	return filepath.Join(m.keysDir, filename)
 }
 
-func (m *LazyKeyManager) determineBatchKeyPath(circuitType CircuitType, treeHeight uint32, batchSize uint32) string {
-	switch circuitType {
-	case BatchAddressAppendCircuitType:
-		if treeHeight == 40 && batchSize == 250 {
-			return m.keyPath("batch_address-append_40_250.key")
-		} else if treeHeight == 40 && batchSize == 10 {
-			return m.keyPath("batch_address-append_40_10.key")
+// keyPathOf is keyPath for a key file name that may be empty, meaning no key.
+func (m *LazyKeyManager) keyPathOf(filename string) string {
+	if filename == "" {
+		return ""
+	}
+	return m.keyPath(filename)
+}
+
+// batchAddressAppendShapes are the (tree height, batch size) pairs with a key.
+var batchAddressAppendShapes = [][2]uint32{{40, 10}, {40, 250}}
+
+// BatchKeyFile names the key file that proves a batch, or "" for none.
+func BatchKeyFile(circuitType CircuitType, treeHeight uint32, batchSize uint32) string {
+	if circuitType != BatchAddressAppendCircuitType {
+		return ""
+	}
+	for _, shape := range batchAddressAppendShapes {
+		if shape[0] == treeHeight && shape[1] == batchSize {
+			return fmt.Sprintf("batch_address-append_%d_%d.key", treeHeight, batchSize)
 		}
 	}
-
 	return ""
+}
+
+func (m *LazyKeyManager) determineBatchKeyPath(circuitType CircuitType, treeHeight uint32, batchSize uint32) string {
+	return m.keyPathOf(BatchKeyFile(circuitType, treeHeight, batchSize))
 }
 
 // transferSupportedShapes mirrors protocol.SupportedShapes (the on-chain
 // canonical shape set). Kept here because common must not import prover-test;
 // keep in sync with prover-test/spp/protocol/shape.go.
 var transferSupportedShapes = [][2]uint32{
-	{1, 1},
 	{1, 2},
-	{2, 2},
-	{2, 3},
-	{3, 3},
-	{4, 3},
-	{4, 4},
-	{5, 3},
-	{5, 4},
+	{1, 4},
 	{1, 8},
-	// Consolidation shape; keep in sync with protocol.SupportedShapes.
-	{36, 2},
+	{2, 2},
+	{2, 4},
+	{1, 16},
+	{2, 8},
+	{3, 2},
+	{3, 4},
+	{2, 16},
+	{3, 8},
+	{4, 2},
+	{4, 4},
+	{4, 8},
+	{5, 2},
+	{5, 4},
+	{4, 16},
+	{5, 8},
+	{6, 2},
+	{6, 4},
+	{5, 16},
+	{6, 8},
+	{8, 2},
+	{8, 4},
+	{8, 8},
+	{8, 16},
+	{12, 2},
+	{12, 4},
+	{12, 8},
+	{16, 2},
+	{16, 4},
+	{16, 8},
+	{24, 2},
+	{24, 4},
+	{32, 2},
+	{40, 2},
+	{48, 2},
+	{49, 2},
 }
 
 // mergeSupportedInputCounts mirrors mergeshared.SupportedInputCounts. Kept here
 // because common must not import the circuit packages; keep in sync with
 // circuits/spp_merge/shared/transaction.go.
-var mergeSupportedInputCounts = []uint32{8, 36}
+var mergeSupportedInputCounts = []uint32{8, 24, 54}
 
-// mergeKeyPath resolves a merge key file. Merge always produces one output, so
+type ProofShape struct {
+	Circuit CircuitType
+	Inputs  uint32
+	Outputs uint32
+}
+
+func (shape ProofShape) Supported() bool {
+	if shape.Circuit == TransferRingAuthorityCircuitType && (shape.Inputs != shape.Outputs || shape.Inputs > 4) {
+		return false
+	}
+	switch shape.Circuit {
+	case MergeCircuitType, MergeRingCircuitType:
+		for _, inputs := range mergeSupportedInputCounts {
+			if shape.Inputs == inputs && shape.Outputs == 1 {
+				return true
+			}
+		}
+	case TransferConfidentialCircuitType, TransferRingCircuitType, TransferRingAuthorityCircuitType, TransferP256RingCircuitType:
+		for _, supported := range transferSupportedShapes {
+			if shape.Inputs == supported[0] && shape.Outputs == supported[1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// mergeKeyFile names a merge key file. Merge always produces one output, so
 // only the input count varies across shapes.
-func (m *LazyKeyManager) mergeKeyPath(prefix string, nInputs uint32, nOutputs uint32) string {
+func mergeKeyFile(prefix string, nInputs uint32, nOutputs uint32) string {
 	if nOutputs != 1 {
 		return ""
 	}
 	for _, supported := range mergeSupportedInputCounts {
 		if supported == nInputs {
-			return m.keyPath(fmt.Sprintf("%s_%d_1.key", prefix, nInputs))
+			return fmt.Sprintf("%s_%d_1.key", prefix, nInputs)
 		}
 	}
 	return ""
 }
 
-func (m *LazyKeyManager) determineTransferKeyPath(circuitType CircuitType, nInputs uint32, nOutputs uint32) string {
+// TransferKeyFile names the key file that proves a transfer or merge shape, or
+// "" for an unsupported one.
+func TransferKeyFile(circuitType CircuitType, nInputs uint32, nOutputs uint32) string {
+	if !(ProofShape{Circuit: circuitType, Inputs: nInputs, Outputs: nOutputs}).Supported() {
+		return ""
+	}
 	var prefix string
 	switch circuitType {
 	case TransferConfidentialCircuitType:
@@ -315,28 +390,73 @@ func (m *LazyKeyManager) determineTransferKeyPath(circuitType CircuitType, nInpu
 	case TransferRingAuthorityCircuitType:
 		prefix = "transfer_ring_authority"
 	case MergeCircuitType:
-		return m.mergeKeyPath("merge", nInputs, nOutputs)
+		return mergeKeyFile("merge", nInputs, nOutputs)
 	case MergeRingCircuitType:
-		return m.mergeKeyPath("merge_ring", nInputs, nOutputs)
+		return mergeKeyFile("merge_ring", nInputs, nOutputs)
 	default:
 		return ""
 	}
 
 	for _, shape := range transferSupportedShapes {
 		if shape[0] == nInputs && shape[1] == nOutputs {
-			return m.keyPath(fmt.Sprintf("%s_%d_%d.key", prefix, nInputs, nOutputs))
+			return fmt.Sprintf("%s_%d_%d.key", prefix, nInputs, nOutputs)
 		}
 	}
 
 	return ""
 }
 
+func (m *LazyKeyManager) determineTransferKeyPath(circuitType CircuitType, nInputs uint32, nOutputs uint32) string {
+	return m.keyPathOf(TransferKeyFile(circuitType, nInputs, nOutputs))
+}
+
+// RingKeyFile names a custom-ring circuit's key file, or "" for none.
+func RingKeyFile(circuitType CircuitType) string {
+	return RingKeyFiles[circuitType]
+}
+
 func (m *LazyKeyManager) determineRingKeyPath(circuitType CircuitType) string {
-	file, ok := RingKeyFiles[circuitType]
-	if !ok {
-		return ""
+	return m.keyPathOf(RingKeyFile(circuitType))
+}
+
+// keyFileCircuits maps every proving key file the prover proves with to the
+// circuit it proves.
+func keyFileCircuits() map[string]CircuitType {
+	files := map[string]CircuitType{}
+	for _, circuit := range []CircuitType{
+		TransferConfidentialCircuitType,
+		TransferRingCircuitType,
+		TransferP256RingCircuitType,
+		TransferRingAuthorityCircuitType,
+	} {
+		for _, shape := range transferSupportedShapes {
+			if file := TransferKeyFile(circuit, shape[0], shape[1]); file != "" {
+				files[file] = circuit
+			}
+		}
 	}
-	return m.keyPath(file)
+	for _, circuit := range []CircuitType{MergeCircuitType, MergeRingCircuitType} {
+		for _, inputs := range mergeSupportedInputCounts {
+			files[TransferKeyFile(circuit, inputs, 1)] = circuit
+		}
+	}
+	for _, shape := range batchAddressAppendShapes {
+		files[BatchKeyFile(BatchAddressAppendCircuitType, shape[0], shape[1])] = BatchAddressAppendCircuitType
+	}
+	for circuit, file := range RingKeyFiles {
+		files[file] = circuit
+	}
+	return files
+}
+
+// KeyFiles lists every proving key file the prover proves with, sorted.
+func KeyFiles() []string {
+	return slices.Sorted(maps.Keys(keyFileCircuits()))
+}
+
+// KeyFileCircuit is the circuit a proving key file proves, or "" for none.
+func KeyFileCircuit(file string) CircuitType {
+	return keyFileCircuits()[file]
 }
 
 func (m *LazyKeyManager) GetStats() map[string]interface{} {
@@ -357,6 +477,10 @@ func (m *LazyKeyManager) PreloadForRunMode(runMode RunMode) error {
 		Msg("Preloading keys for run mode")
 
 	keys := GetKeys(m.keysDir, runMode, nil)
+	switch runMode {
+	case Rpc, LocalRpc, Full, FullTest:
+		keys = append(keys, m.transferPreloadPaths(transferPreloadCircuits)...)
+	}
 	return m.preloadKeys(keys)
 }
 
@@ -364,6 +488,9 @@ func (m *LazyKeyManager) PreloadAll() error {
 	logging.Logger().Info().Msg("Preloading all keys")
 
 	allKeys := make(map[string]bool)
+	for _, key := range m.transferPreloadPaths(transferPreloadCircuits) {
+		allKeys[key] = true
+	}
 	runModes := []RunMode{Full, FullTest}
 	for _, runMode := range runModes {
 		keys := GetKeys(m.keysDir, runMode, nil)
@@ -385,10 +512,37 @@ func (m *LazyKeyManager) PreloadCircuits(circuits []string) error {
 		Strs("circuits", circuits).
 		Msg("Preloading keys for circuits")
 
+	keyPaths, err := m.CircuitKeyPaths(circuits)
+	if err != nil {
+		return err
+	}
+	return m.preloadKeys(keyPaths)
+}
+
+// CircuitKeyPaths resolves preload selectors without touching the key files.
+func (m *LazyKeyManager) CircuitKeyPaths(circuits []string) ([]string, error) {
 	var keyPaths []string
 	seen := make(map[string]bool)
 
 	for _, circuit := range circuits {
+		paths, matched, err := m.selectedTransferPaths(circuit)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			if path := m.determineRingKeyPath(CircuitType(circuit)); path != "" {
+				paths, matched = []string{path}, true
+			}
+		}
+		if matched {
+			for _, path := range paths {
+				if !seen[path] {
+					keyPaths = append(keyPaths, path)
+					seen[path] = true
+				}
+			}
+			continue
+		}
 		if specificPath := m.tryParseSpecificConfig(circuit); specificPath != "" {
 			if !seen[specificPath] {
 				keyPaths = append(keyPaths, specificPath)
@@ -398,6 +552,9 @@ func (m *LazyKeyManager) PreloadCircuits(circuits []string) error {
 		}
 
 		circuitKeys := GetKeys(m.keysDir, "", []string{circuit})
+		if len(circuitKeys) == 0 {
+			return nil, fmt.Errorf("unknown preload circuit %q", circuit)
+		}
 		for _, key := range circuitKeys {
 			if !seen[key] {
 				keyPaths = append(keyPaths, key)
@@ -405,8 +562,7 @@ func (m *LazyKeyManager) PreloadCircuits(circuits []string) error {
 			}
 		}
 	}
-
-	return m.preloadKeys(keyPaths)
+	return keyPaths, nil
 }
 
 func (m *LazyKeyManager) tryParseSpecificConfig(config string) string {

@@ -57,7 +57,7 @@ const bridgeDirectory = join(root, "dist/bridge");
 const bridgeDestinations = new Map([
   ["zolana-prover.wasm", "examples/browser/public/prover/zolana-prover.wasm"],
   ["wasm_exec.js", "packages/web-prover/src/vendor/wasm_exec.js"],
-  ["transfer-2x3.json", "examples/browser/public/fixtures/transfer-2x3.json"],
+  ["transfer-2x2.json", "examples/browser/public/fixtures/transfer-2x2.json"],
 ]);
 const bridgeManifest = JSON.parse(await readFile(join(bridgeDirectory, "manifest.json"), "utf8"));
 if (

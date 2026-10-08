@@ -32,11 +32,12 @@ func ToHex(i *big.Int) string {
 }
 
 type ProofJSON struct {
-	Ar                 [2]string    `json:"ar"`
-	Bs                 [2][2]string `json:"bs"`
-	Krs                [2]string    `json:"krs"`
-	ProofCommitment    []string     `json:"proofCommitment,omitempty"`
-	ProofCommitmentPok []string     `json:"proofCommitmentPok,omitempty"`
+	Resolution         *ProofResolution `json:"resolution,omitempty"`
+	Ar                 [2]string        `json:"ar"`
+	Bs                 [2][2]string     `json:"bs"`
+	Krs                [2]string        `json:"krs"`
+	ProofCommitment    []string         `json:"proofCommitment,omitempty"`
+	ProofCommitmentPok []string         `json:"proofCommitmentPok,omitempty"`
 	// ProvingKeySha256 is 64 lowercase hex digits, omitted when the proof
 	// system was not loaded from a key file.
 	ProvingKeySha256 string `json:"provingKeySha256,omitempty"`
@@ -50,7 +51,7 @@ func (p *Proof) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	proofBytes := buf.Bytes()
-	proofJson := ProofJSON{}
+	proofJson := ProofJSON{Resolution: p.Resolution}
 	proofHexNumbers := [8]string{}
 	for i := 0; i < 8; i++ {
 		proofHexNumbers[i] = ToHex(new(big.Int).SetBytes(proofBytes[i*fpSize : (i+1)*fpSize]))
@@ -91,6 +92,7 @@ func (p *Proof) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &proofJson); err != nil {
 		return err
 	}
+	p.Resolution = proofJson.Resolution
 	proofHexNumbers := []string{
 		proofJson.Ar[0],
 		proofJson.Ar[1],
@@ -370,7 +372,7 @@ func ReadSystemFromFile(path string) (interface{}, error) {
 		return ps, nil
 	} else if strings.Contains(strings.ToLower(path), "merge") {
 		// Merge reuses TransferProofSystem (generic Groth16 holder); the file name
-		// (merge_8_1.key) carries no "transfer" substring, so it needs its own
+		// (merge_24_1.key) carries no "transfer" substring, so it needs its own
 		// branch or it would fall through to the unrecognized-file error.
 		ps := new(TransferProofSystem)
 		digest, err := readKeyFile(path, ps.UnsafeReadFrom)
@@ -378,8 +380,8 @@ func ReadSystemFromFile(path string) (interface{}, error) {
 			return nil, err
 		}
 		ps.ProvingKeySha256 = digest
-		// merge_ring_8_1.key is the policy-ring variant; the default merge file is
-		// merge_8_1.key.
+		// merge_ring_24_1.key is the policy-ring variant; the default merge file is
+		// merge_24_1.key.
 		if strings.Contains(strings.ToLower(path), "ring") {
 			ps.CircuitType = MergeRingCircuitType
 		} else {

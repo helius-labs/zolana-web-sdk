@@ -95,7 +95,7 @@ it("labels the transfer with its observed shape, excluding later withdrawal shap
     amount: 1n,
   });
   vi.mocked(buildTransferTransaction).mockImplementation(async () => {
-    proverMeasurementSink({ step: "proof-request", ms: 0, shape: "2x3" });
+    proverMeasurementSink({ step: "proof-request", ms: 0, shape: "2x2" });
     return transaction;
   });
   vi.mocked(buildWithdrawalTransaction).mockImplementation(async () => {
@@ -104,7 +104,7 @@ it("labels the transfer with its observed shape, excluding later withdrawal shap
   });
   const result = await runFlow(ctx, { notes: 1, reuseExistingNotes: true });
   expect(result.ok).toBe(true);
-  expect(result.shape).toBe("2x3");
+  expect(result.shape).toBe("2x2");
   expect(buildTransferTransaction).toHaveBeenLastCalledWith(
     expect.objectContaining({ amount: 6_000_000n }),
   );

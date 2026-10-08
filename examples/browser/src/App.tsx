@@ -45,7 +45,7 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     const abort = new AbortController();
-    void fetch(`${import.meta.env.BASE_URL}fixtures/transfer-2x3.json`, { signal: abort.signal })
+    void fetch(`${import.meta.env.BASE_URL}fixtures/transfer-2x2.json`, { signal: abort.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("The sample could not be loaded. Refresh to try again.");
         const text = await response.text();
@@ -143,7 +143,7 @@ export function App(): React.ReactElement {
 
   const restoreSample = async () => {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}fixtures/transfer-2x3.json`);
+      const response = await fetch(`${import.meta.env.BASE_URL}fixtures/transfer-2x2.json`);
       if (!response.ok) throw new Error("The sample could not be loaded. Try again.");
       const text = await response.text();
       JSON.parse(text);

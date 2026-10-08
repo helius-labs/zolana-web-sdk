@@ -7,7 +7,7 @@ it.each(["string", "request"])(
     const body = JSON.stringify({
       circuitType: "transfer-confidential",
       nInputs: 2,
-      nOutputs: 3,
+      nOutputs: 2,
       secret: "never report this",
     });
     const shapes = vi.fn();
@@ -17,9 +17,18 @@ it.each(["string", "request"])(
     });
     const fetch = observeProofRequests(downstream, "http://localhost/proxy/prover", shapes);
     if (kind === "request")
-      await fetch(new Request("http://localhost/proxy/prover/prove", { method: "POST", body }));
-    else await fetch("http://localhost/proxy/prover/prove", { method: "POST", body });
-    expect(shapes).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: "2x3" }));
+      await fetch(
+        new Request("http://localhost/proxy/prover/prove/transfer_confidential_2_2", {
+          method: "POST",
+          body,
+        }),
+      );
+    else
+      await fetch("http://localhost/proxy/prover/prove/transfer_confidential_2_2", {
+        method: "POST",
+        body,
+      });
+    expect(shapes).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: "2x2" }));
     expect(JSON.stringify(shapes.mock.calls)).not.toContain("secret");
     expect(downstream).toHaveBeenCalledTimes(1);
   },
@@ -39,14 +48,14 @@ it("records shapes sent to a proving key's own path", async () => {
   const shapes = vi.fn();
   const downstream = vi.fn<typeof globalThis.fetch>(async () => Response.json({}));
   const fetch = observeProofRequests(downstream, "http://localhost/prover", shapes);
-  await fetch("http://localhost/prover/prove/transfer_confidential_2_3", {
+  await fetch("http://localhost/prover/prove/transfer_confidential_2_2", {
     method: "POST",
-    body: '{"circuitType":"transfer-confidential","nInputs":2,"nOutputs":3}',
+    body: '{"circuitType":"transfer-confidential","nInputs":2,"nOutputs":2}',
   });
-  expect(shapes).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: "2x3" }));
+  expect(shapes).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: "2x2" }));
 });
 it.each([
-  ["http://localhost/prover/prove", { kind: "prove" }],
+  ["http://localhost/prover/prove", { kind: "unsupported" }],
   ["http://localhost/prover/prove/", { kind: "unsupported" }],
   ["http://localhost/prover/prove/merge_8_1", { kind: "prove", keyFile: "merge_8_1.key" }],
   ["http://localhost/prover/prove/merge_8_1/indexed", { kind: "unsupported" }],
