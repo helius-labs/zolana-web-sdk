@@ -13,7 +13,7 @@
   ],
   "type": "module",
   "bin": {
-    "zolana-prover-assets": "./dist/scripts/setup-assets.mjs"
+    "zolana-prover-assets": "dist/scripts/setup-assets.mjs"
   },
   "exports": {
     ".": {
