@@ -8,3 +8,4 @@ examples/browser/public/fixtures/
 *.key
 *.wasm
 .DS_Store
+examples/wallet/public/

@@ -354,6 +354,10 @@ export function App(): React.ReactElement {
                 clearResult();
               }}
             />
+            <p className="settings-note">
+              The sample is a synthetic 2x2 transfer request for timing the prover; examples/wallet
+              proves real ones.
+            </p>
             <button type="button" className="text-button" onClick={() => void restoreSample()}>
               Restore sample
             </button>

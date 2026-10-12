@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,3 +15,5 @@ for (const path of [
   await mkdir(dirname(destination), { recursive: true });
   await copyFile(join(root, path), destination);
 }
+// The package's bin; npm marks it executable on install, but not in a workspace.
+await chmod(join(output, "scripts/setup-assets.mjs"), 0o755);
