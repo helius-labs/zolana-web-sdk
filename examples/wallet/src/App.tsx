@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatAmount, parseAmount } from "@heliuslabs/zolana";
 import { address, isAddress } from "@solana/kit";
-import type { Measurement } from "@zolana/web-prover";
+import type { Measurement } from "@heliuslabs/zolana-web-prover";
 
 import { loadBurnerSeed, resetBurner } from "./burner.js";
 import { actions, openSession, snapshot, type PrivateTransaction, type Session, type Snapshot } from "./zolana.js";
@@ -97,7 +97,7 @@ export function App(): React.ReactElement {
       <header>
         <h1>Private wallet</h1>
         <p className="muted">
-          Devnet. Every proof is made in this browser by <code>@zolana/web-prover</code>; the
+          Devnet. Every proof is made in this browser by <code>@heliuslabs/zolana-web-prover</code>; the
           witness never leaves the page.
         </p>
       </header>

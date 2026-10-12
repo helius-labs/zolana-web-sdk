@@ -1,6 +1,6 @@
 # Private wallet with local proving
 
-A devnet private wallet where every zero-knowledge proof is made in the browser by `@zolana/web-prover`: register, shield SOL, send it privately, unshield it, and read the private history through `@heliuslabs/zolana`.
+A devnet private wallet where every zero-knowledge proof is made in the browser by `@heliuslabs/zolana-web-prover`: register, shield SOL, send it privately, unshield it, and read the private history through `@heliuslabs/zolana`.
 
 The whole integration is in [`src/zolana.ts`](src/zolana.ts):
 

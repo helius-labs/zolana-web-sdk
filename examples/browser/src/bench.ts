@@ -8,7 +8,7 @@
  * that mixes them silently is worse than no table.
  */
 
-import { WasmProverError } from "@zolana/web-prover";
+import { WasmProverError } from "@heliuslabs/zolana-web-prover";
 
 export type ProverKind = "remote" | "wasm" | "native";
 

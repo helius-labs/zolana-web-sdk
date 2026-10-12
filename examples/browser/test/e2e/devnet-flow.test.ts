@@ -1,6 +1,6 @@
 /**
  * One shield -> split -> transfer -> unshield round trip through the published
- * SDK, with every proof produced by `@zolana/web-prover` and checked on-chain.
+ * SDK, with every proof produced by `@heliuslabs/zolana-web-prover` and checked on-chain.
  *
  * Opt-in: set ZOLANA_E2E_FUNDER to a Solana CLI keypair file funded on the
  * target cluster (devnet by default). The funder only pays two small top-ups to
@@ -30,7 +30,7 @@ import {
   createZolanaClient,
   type Bytes32,
 } from "@heliuslabs/zolana";
-import { ZolanaWebProver } from "@zolana/web-prover";
+import { ZolanaWebProver } from "@heliuslabs/zolana-web-prover";
 
 import { proverMeasurementSink, runFlow } from "../../src/flow.js";
 import { signSendAndConfirm } from "../../src/submit.js";

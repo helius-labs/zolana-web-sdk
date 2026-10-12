@@ -20,12 +20,12 @@ try {
   const metadata = JSON.parse(
     await command(
       "npm",
-      ["pack", "--json", "--workspace", "@zolana/web-prover", "--pack-destination", consumer],
+      ["pack", "--json", "--workspace", "@heliuslabs/zolana-web-prover", "--pack-destination", consumer],
       root,
       true,
     ),
   );
-  const packed = Array.isArray(metadata) ? metadata[0] : metadata["@zolana/web-prover"];
+  const packed = Array.isArray(metadata) ? metadata[0] : metadata["@heliuslabs/zolana-web-prover"];
   assert.ok(packed?.filename, "npm pack must identify the generated tarball");
   const tarball = join(consumer, packed.filename);
   const lock = JSON.parse(await readFile(join(root, "package-lock.json"), "utf8"));
@@ -36,7 +36,7 @@ try {
       name: "packed-prover-consumer",
       private: true,
       type: "module",
-      dependencies: { "@zolana/web-prover": `file:${tarball}` },
+      dependencies: { "@heliuslabs/zolana-web-prover": `file:${tarball}` },
       devDependencies: {
         typescript: lock.packages["node_modules/typescript"].version,
         vite: lock.packages["node_modules/vite"].version,
@@ -44,7 +44,7 @@ try {
     }),
   );
   await command("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], consumer);
-  const installed = join(consumer, "node_modules/@zolana/web-prover");
+  const installed = join(consumer, "node_modules/@heliuslabs/zolana-web-prover");
   assert.equal((await lstat(installed)).isSymbolicLink(), false);
   const manifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
   for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {

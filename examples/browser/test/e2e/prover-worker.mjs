@@ -1,4 +1,4 @@
-// Hosts @zolana/web-prover's built browser worker in a Node worker thread: the
+// Hosts @heliuslabs/zolana-web-prover's built browser worker in a Node worker thread: the
 // worker only needs `self` messaging and a fetch that can read the local wasm.
 import { readFile } from "node:fs/promises";
 import { parentPort, workerData } from "node:worker_threads";

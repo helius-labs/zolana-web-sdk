@@ -1,4 +1,4 @@
-import { ZolanaWebProver, WasmProverError, type Measurement } from "@zolana/web-prover";
+import { ZolanaWebProver, WasmProverError, type Measurement } from "@heliuslabs/zolana-web-prover";
 
 declare global {
   interface Window {

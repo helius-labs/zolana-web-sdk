@@ -6,7 +6,7 @@ const assets = new URL("../../../../packages/web-prover/dist/assets/", import.me
 /** `WasmProverOptions.workerFactory` for Node, running the packaged worker bundle. */
 export function nodeProverWorker(): Worker {
   const bundle = readdirSync(assets).find((name) => /^prover\.worker-.*\.js$/u.test(name));
-  if (bundle === undefined) throw new Error("Build @zolana/web-prover first: npm run build:prover");
+  if (bundle === undefined) throw new Error("Build @heliuslabs/zolana-web-prover first: npm run build:prover");
   const thread = new ThreadWorker(new URL("./prover-worker.mjs", import.meta.url), {
     workerData: { bundle: new URL(bundle, assets).href },
   });

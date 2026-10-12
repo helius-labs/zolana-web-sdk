@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { automaticProvingThreads, WasmProver } from "@zolana/web-prover";
+import { automaticProvingThreads, WasmProver } from "@heliuslabs/zolana-web-prover";
 
 type Mode = "proof" | "benchmark";
 type ThreadMode = "auto" | "custom" | "go";
