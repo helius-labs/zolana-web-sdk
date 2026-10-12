@@ -1,11 +1,11 @@
-# @zolana/web-prover
+# @heliuslabs/zolana-web-prover
 
 Local Groth16 proving and gnark verification in a browser worker. The core package has no protocol SDK or Solana dependencies. Transaction building, submission and benchmark orchestration live in the repository's browser example, not this package.
 
 ## Install and serve assets
 
 ```sh
-npm install @zolana/web-prover
+npm install @heliuslabs/zolana-web-prover
 npx --no-install zolana-prover-assets --output public
 ```
 
@@ -23,7 +23,7 @@ Use HTTPS (localhost is suitable for development) and a bundler that preserves t
 ## Prove locally
 
 ```ts
-import { ZolanaWebProver, WasmProverError } from "@zolana/web-prover";
+import { ZolanaWebProver, WasmProverError } from "@heliuslabs/zolana-web-prover";
 
 const prover = new ZolanaWebProver({
   wasmUrl: new URL("/prover/zolana-prover.wasm", location.href).href,
@@ -41,7 +41,7 @@ try {
 }
 ```
 
-`proveRequest` accepts the protocol's `/prove` JSON string and returns its proof JSON only after local verification. No transaction is built or sent. The bridge proves requests from `@heliuslabs/zolana` 0.4.0-alpha and reports each proof's `provingKeySha256`, which that SDK checks against its pinned keys. To connect it, pass `prover.createFetch()` as `fetch` and the same `proverUrl` to `createZolanaClient`, then prove through `LocalKeys.fromKeypair(keypair, client.proofService)`. Requests to that URL's `/prove/<key>` endpoint, and to the bare `/prove` the Helius gateway routes to, are proved locally with the key the request names; a `<key>` that does not match the request body and any other path below `/prove` (such as `/prove/<key>/indexed`) get a 500 and are never forwarded. All other requests are delegated to the configured fetch implementation.
+`proveRequest` accepts the protocol's `/prove` JSON string and returns its proof JSON only after local verification. No transaction is built or sent. The bridge proves requests from `@heliuslabs/zolana` 0.4.0-alpha and reports each proof's `provingKeySha256`, which that SDK checks against its pinned keys. To connect it, pass `prover.createFetch()` as `fetch` and the same `proverUrl` to `createZolanaClient`, then prove through `LocalKeys.fromKeypair(keypair, client.proofService)`, or, for a browser wallet, `LocalKeys.fromDerivationSeed` with the wallet's signature over `ed25519DerivationMessage(publicKey)` (the repository's [wallet example](https://github.com/helius-labs/zolana-web-sdk/tree/main/examples/wallet) shows the whole flow). Requests to that URL's `/prove/<key>` endpoint, and to the bare `/prove` the Helius gateway routes to, are proved locally with the key the request names; a `<key>` that does not match the request body and any other path below `/prove` (such as `/prove/<key>/indexed`) get a 500 and are never forwarded. All other requests are delegated to the configured fetch implementation.
 
 ## Select proving keys
 
@@ -63,4 +63,4 @@ Keys require roughly 9–37 MB each for confidential transfers and 56 MB for mer
 - `terminate()` rejects outstanding work, clears the factory and disables automatic restart. Create a new prover, or explicitly call `start(factory)` to reuse the object. A supplied single `Worker` cannot be recreated automatically.
 - `WasmProverError.code` and its fixed message identify failures without serializing backend messages, witness values, causes or stacks from the backend. Core code does not log errors. The fetch adapter returns a JSON 500 with the safe `code` and `message`; cancellation rejects instead. Caller-provided abort reasons and callback errors remain caller-controlled and should not contain secrets.
 
-The accelerator asset lock remains `runtime-v0.1.0`; the Go bridge, shim and sample request from that release are intentionally ignored. Maintainer builds compile the sanitized Go source using pinned Go 1.27.1 and package it together with the matching shim and sample request. No binaries or releases are published by the build. The TypeScript worker/API boundary additionally redacts backend errors as defense in depth.
+The accelerator comes from the `runtime-v0.1.0` release; the Go bridge is rebuilt from source and bundled, so that release's older bridge, shim and sample request are ignored. The TypeScript worker/API boundary additionally redacts backend errors as defense in depth.

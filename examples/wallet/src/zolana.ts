@@ -25,7 +25,7 @@ import {
   type KeyPairSigner,
   type Transaction,
 } from "@solana/kit";
-import { ZolanaWebProver, type Measurement } from "@zolana/web-prover";
+import { ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
 
 export const endpoints = {
   solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL ?? "https://api.devnet.solana.com",

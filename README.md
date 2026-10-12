@@ -1,13 +1,13 @@
 # Zolana Web SDK
 
-Local Zolana Groth16 proving in the browser: `@zolana/web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
+Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
 
 ## Packages
 
-- `@zolana/web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
+- `@heliuslabs/zolana-web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
 - [`examples/wallet`](examples/wallet/README.md) is the integration example: a devnet private wallet on the published `@heliuslabs/zolana@0.4.0-alpha` that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
 - `examples/browser` is a prover benchmark. It proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, to time the Go and Arkworks engines on one proof or five.
-- `@zolana/web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
+- `@heliuslabs/zolana-web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
 - `wasm` is a self-contained Go module for the browser prover bridge.
 
 ## Setup
@@ -69,7 +69,7 @@ For an installed package without this repository, run `npx --no-install zolana-p
 The default key is demo-only 2x2. For real transfers, explicitly select the needed locked shapes, for example `--keys transfer_confidential_1_2.key,transfer_confidential_2_2.key`. This replaces the default key-manifest selection; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
 
 ```ts
-import { ZolanaWebProver } from "@zolana/web-prover";
+import { ZolanaWebProver } from "@heliuslabs/zolana-web-prover";
 
 const prover = new ZolanaWebProver({
   wasmUrl: "/prover/zolana-prover.wasm",
