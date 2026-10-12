@@ -23,7 +23,7 @@ import { operationError, WasmProverError } from "./errors.js";
 
 /** The API `wasm/prover-wasm` installs on `globalThis`. */
 interface ZolanaProverApi {
-  loadKey(fileName: string, key: Uint8Array, sha256: string, exportRaw: boolean): unknown;
+  loadKey(fileName: string, key: Uint8Array, sha256?: string, exportRaw?: boolean): unknown;
   prove(requestJson: string): unknown;
   loadedKeys(): unknown;
   verify(requestJson: string, proofJson: string): unknown;
@@ -118,15 +118,17 @@ async function handle(request: WorkerRequest): Promise<unknown> {
     case "init":
       await init(request.wasmUrl, request.threads);
       return { initialized: true, threads: activeThreads, rawKeyFormat: requireApi().rawKeyFormat };
-    case "loadKey":
+    case "loadKey": {
+      const bridge = requireApi();
+      const key = new Uint8Array(request.key);
+      // A bridge installed before raw keys takes (fileName, key) and hashes the key
+      // itself; the page never asks it for a raw key.
       return unwrap(
-        requireApi().loadKey(
-          request.fileName,
-          new Uint8Array(request.key),
-          request.sha256,
-          request.exportRaw,
-        ),
+        bridge.rawKeyFormat === undefined
+          ? bridge.loadKey(request.fileName, key)
+          : bridge.loadKey(request.fileName, key, request.sha256, request.exportRaw),
       );
+    }
     case "prove": {
       const result = unwrap(requireApi().prove(request.body)) as { proof?: unknown };
       // The page rebuilds an HTTP response from this, so hand back the exact
