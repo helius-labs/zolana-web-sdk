@@ -233,9 +233,28 @@ describe("fetch cancellation", () => {
     prover.terminate();
   });
 
+  it("answers the bare /prove from the key the body names", async () => {
+    const { prover, fetch } = await fixture();
+    const response = await prover.createFetch()(`${proveBase}?api-key=secret`, {
+      method: "POST",
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('{"proof":"test"}');
+    expect(fetch.mock.calls.map(([input]) => String(input))).not.toContain(
+      `${proveBase}?api-key=secret`,
+    );
+    expect(request(current(), "loadKey")).toMatchObject({
+      fileName: "transfer_confidential_2_2.key",
+    });
+    prover.terminate();
+  });
+
   it.each([
     ["another key's path", `${proveBase}/transfer_confidential_1_2`],
     ["the indexed route", `${endpoint}/indexed`],
+    ["the status route", `${proveBase}/status?jobId=1`],
   ])("refuses %s without proving or forwarding the witness", async (_, input) => {
     const { prover, fetch } = await fixture();
     const response = await prover.createFetch()(input, { method: "POST", body });
