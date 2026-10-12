@@ -15,7 +15,7 @@ import { abortable } from "./abortable.js";
 import type { Measurement } from "./measurement.js";
 import { operationError, WasmProverError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
-import { KEY_DIGESTS } from "./key-digests.js";
+import { KEY_DIGESTS, KEY_SET } from "./key-digests.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { proofRequestShape, proveRoute } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
@@ -69,6 +69,11 @@ export interface WasmProverOptions {
   readonly workerFactory?: () => Worker;
   /** Called for each timed worker operation so the UI can chart it. */
   readonly onMeasurement?: (measurement: Measurement) => void;
+  /**
+   * Ask the browser to keep cached keys under storage pressure
+   * (`navigator.storage.persist()`). Firefox shows the user a prompt for it.
+   */
+  readonly persistStorage?: boolean;
 }
 
 /**
@@ -87,6 +92,7 @@ export class WasmProver {
   #initialization: Promise<void> | undefined;
   #lifetime = new AbortController();
   #rawKeyFormat: string | undefined;
+  #cachePrepared = false;
   #nextId = 1;
   #queue: Promise<unknown> = Promise.resolve();
   #threads = 0;
@@ -232,7 +238,7 @@ export class WasmProver {
     const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/${shape.keyFile}`;
     const expected = KEY_DIGESTS[shape.keyFile];
     if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
-    const cache = await optionalCache(() => globalThis.caches?.open(keyCacheName), signal);
+    const cache = await this.#openKeyCache(signal);
     const started = performance.now();
     let key =
       (await this.#cachedRawKey(cache, url, expected, signal)) ??
@@ -286,6 +292,25 @@ export class WasmProver {
       );
     this.#loaded.clear();
     this.#loaded.add(shape.keyFile);
+  }
+
+  /**
+   * Opens this key set's cache. The first call also deletes the stores of other
+   * key sets, so a rotation frees its keys at once, and asks for persistence
+   * when the caller opted in.
+   */
+  async #openKeyCache(signal: AbortSignal): Promise<Cache | undefined> {
+    if (!this.#cachePrepared) {
+      this.#cachePrepared = true;
+      const names = await optionalCache(() => globalThis.caches?.keys(), signal);
+      for (const name of names ?? []) {
+        if (name.startsWith(keyCachePrefix) && name !== keyCacheName)
+          await optionalCache(() => globalThis.caches?.delete(name), signal);
+      }
+      if (this.#options.persistStorage === true)
+        await optionalCache(() => globalThis.navigator?.storage?.persist(), signal);
+    }
+    return optionalCache(() => globalThis.caches?.open(keyCacheName), signal);
   }
 
   #installKey(
@@ -549,7 +574,9 @@ async function readBody(input: RequestInfo | URL, init?: RequestInit): Promise<s
   return undefined;
 }
 
-const keyCacheName = "zolana-proving-keys";
+/** Also matches 0.1.0's single `zolana-proving-keys` store. */
+const keyCachePrefix = "zolana-proving-keys";
+const keyCacheName = `${keyCachePrefix}-${KEY_SET}`;
 const rawSourceHeader = "x-zolana-pinned-sha256";
 const rawFormatHeader = "x-zolana-raw-format";
 const rawDigestHeader = "x-zolana-raw-sha256";

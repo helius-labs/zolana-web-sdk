@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZolanaWebProver } from "../src/index.js";
+import { KEY_SET } from "../src/key-digests.js";
 import {
   WasmProver,
+  type WasmProverOptions,
   type WorkerRequest,
   type WorkerResponse,
   type WorkerFatal,
@@ -18,9 +20,10 @@ const factory = () => new Worker("test-worker");
 
 // Every pinned key is the three bytes of `key` in these tests.
 vi.mock("../src/key-digests.js", async (importOriginal) => {
-  const { KEY_DIGESTS } = await importOriginal<typeof import("../src/key-digests.js")>();
+  const original = await importOriginal<typeof import("../src/key-digests.js")>();
   const digest = { size: 3, sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81" };
-  return { KEY_DIGESTS: Object.fromEntries(Object.keys(KEY_DIGESTS).map((name) => [name, digest])) };
+  const KEY_DIGESTS = Object.fromEntries(Object.keys(original.KEY_DIGESTS).map((name) => [name, digest]));
+  return { ...original, KEY_DIGESTS };
 });
 
 class TestWorker extends EventTarget {
@@ -101,7 +104,10 @@ function failure(work: Promise<unknown>): Promise<unknown> {
     (error: unknown) => error,
   );
 }
-async function fixture(onMeasurement: (measurement: Measurement) => void = () => {}) {
+async function fixture(
+  onMeasurement: (measurement: Measurement) => void = () => {},
+  options: Partial<WasmProverOptions> = {},
+) {
   const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
   const prover = new WasmProver({
     wasmUrl: "/prover/test.wasm",
@@ -109,6 +115,7 @@ async function fixture(onMeasurement: (measurement: Measurement) => void = () =>
     proverUrl: "http://localhost:3001",
     onMeasurement,
     fetch,
+    ...options,
   });
   return { prover, fetch };
 }
@@ -679,5 +686,62 @@ describe("raw proving-key cache", () => {
     await older.prover.proveRequest(body);
     expect(loadKeyRequest().exportRaw).toBe(false);
     older.prover.terminate();
+  });
+});
+
+describe("key cache per key set", () => {
+  function storage(names: readonly string[]) {
+    const cache = {
+      match: vi.fn(async () => undefined),
+      put: vi.fn(async () => {}),
+      delete: vi.fn(async () => true),
+    };
+    const caches = {
+      open: vi.fn(async (_name: string) => cache),
+      keys: vi.fn(async () => names),
+      delete: vi.fn(async (_name: string) => true),
+    };
+    vi.stubGlobal("caches", caches);
+    return caches;
+  }
+
+  it("opens this key set's store and deletes other key sets' stores once", async () => {
+    const caches = storage([
+      "zolana-proving-keys",
+      `zolana-proving-keys-${KEY_SET}`,
+      "zolana-proving-keys-0123456789abcdef",
+      "app-assets",
+    ]);
+    const { prover } = await fixture();
+    await prover.proveRequest(body);
+    await prover.proveRequest(
+      JSON.stringify({ circuitType: "transfer-confidential", nInputs: 1, nOutputs: 2 }),
+    );
+    expect(caches.open.mock.calls.map(([name]) => name)).toEqual([
+      `zolana-proving-keys-${KEY_SET}`,
+      `zolana-proving-keys-${KEY_SET}`,
+    ]);
+    expect(caches.keys).toHaveBeenCalledTimes(1);
+    expect(caches.delete.mock.calls.map(([name]) => name)).toEqual([
+      "zolana-proving-keys",
+      "zolana-proving-keys-0123456789abcdef",
+    ]);
+    prover.terminate();
+  });
+
+  it("asks for persistent storage only when the caller opts in", async () => {
+    storage([]);
+    const persist = vi.fn(async () => true);
+    vi.stubGlobal("navigator", { storage: { persist } });
+    const plain = await fixture();
+    await plain.prover.proveRequest(body);
+    plain.prover.terminate();
+    expect(persist).not.toHaveBeenCalled();
+
+    const opted = await fixture(() => {}, { persistStorage: true });
+    await opted.prover.proveRequest(body);
+    await opted.prover.proveRequest(body);
+    opted.prover.terminate();
+    expect(persist).toHaveBeenCalledTimes(1);
   });
 });
