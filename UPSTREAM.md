@@ -1,6 +1,6 @@
 # Upstream
 
-The browser example depends on the published `@heliuslabs/zolana@0.4.0-alpha`. `wasm` follows `helius-labs/zolana` at tag `v0.4.0-alpha` (`0fde5f1e1e209b85896362c9293ec0b60bbf7563`), the commit that release was cut from, so the bridge accepts that SDK's `/prove` requests and proves with the keys pinned in `wasm/prover/provingkeys/proving-keys.lock`. A new SDK release re-pins both together.
+`upstream.lock.json` pins the published `@heliuslabs/zolana` release the browser example depends on and the `helius-labs/zolana` tag `wasm` follows, the commit that release was cut from, so the bridge accepts that SDK's `/prove` requests and proves with the keys pinned in `wasm/prover/provingkeys/proving-keys.lock`. A new SDK release re-pins both together. `scripts/check-upstream.sh` (CI job `upstream`) fails when anything below drifts from that pin.
 
 Source mapping:
 
@@ -11,7 +11,7 @@ Source mapping:
 
 Local changes to preserve when re-extracting:
 
-- `common.FromHex` returns a fixed error that does not echo its input.
+- `common.FromHex` returns a fixed error that does not echo its input; `marshal_local_test.go` covers it.
 - Go tests read cross-language vectors from `wasm/test-vectors`, copied from the upstream root `test-vectors` and, for `indexed-proof.json`, `sdk-libs/fixtures`.
 - `wasm/circuits/spp_transaction/shared/web_fixture_test.go` is not upstream. It writes `wasm/prover-wasm/testdata/transfer-2x2.json`, a deterministic satisfying 2x2 request built with upstream's test helpers: `WEB_FIXTURE=$PWD/prover-wasm/testdata/transfer-2x2.json go test ./circuits/spp_transaction/shared -run TestWriteWebFixture` from `wasm`.
 
