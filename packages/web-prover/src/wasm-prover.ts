@@ -73,7 +73,7 @@ export interface WasmProverOptions {
 /**
  * Owns the worker, the key cache, and the `fetch` shim.
  *
- * Proving keys are cached in the Cache API rather than memory: they are 9-94 MB
+ * Proving keys are cached in the Cache API rather than memory: they are 9-380 MB
  * each and immutable (the lockfile pins their sha256 and the CloudFront prefix
  * is version-hashed), so re-downloading one per page load is pure waste. After
  * a shape's first load the cache keeps the bridge's raw re-encoding instead of
