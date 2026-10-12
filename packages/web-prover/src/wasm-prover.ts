@@ -12,7 +12,7 @@
  */
 
 import { abortable } from "./abortable.js";
-import type { Measurement } from "./measurement.js";
+import type { KeyProgress, Measurement } from "./measurement.js";
 import { operationError, WasmProverError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
 import { KEY_DIGESTS, KEY_SET } from "./key-digests.js";
@@ -69,6 +69,8 @@ export interface WasmProverOptions {
   readonly workerFactory?: () => Worker;
   /** Called for each timed worker operation so the UI can chart it. */
   readonly onMeasurement?: (measurement: Measurement) => void;
+  /** Called as each proving key downloads and when the worker starts decoding it. */
+  readonly onKeyProgress?: (progress: KeyProgress) => void;
   /**
    * Ask the browser to keep cached keys under storage pressure
    * (`navigator.storage.persist()`). Firefox shows the user a prompt for it.
@@ -221,7 +223,50 @@ export class WasmProver {
     return this.#enqueue((active) => this.#loadKey(shape, active), signal);
   }
 
-  async #loadKey(shape: ShapeKey, signal: AbortSignal): Promise<void> {
+  /**
+   * Downloads, checks and decodes `shapes` ahead of the proofs that need them, so
+   * a first proof doesn't wait seconds for its key. With the Cache API each
+   * shape's decoded form is kept and later loads take a fraction of a second;
+   * shapes already kept are skipped. Each shape is queued on its own, so a proof
+   * requested meanwhile runs after the shape in progress. Aborting skips the
+   * remaining shapes; aborting the one in progress restarts the worker. Without
+   * the Cache API only the last shape stays loaded.
+   */
+  async prefetch(
+    options: Readonly<{
+      shapes: readonly ShapeKey[];
+      signal?: AbortSignal;
+      onProgress?: (progress: KeyProgress) => void;
+    }>,
+  ): Promise<void> {
+    for (const shape of options.shapes) {
+      await this.#enqueue(async (active) => {
+        if (!(await this.#rawKeyKept(shape, active)))
+          await this.#loadKey(shape, active, options.onProgress);
+      }, options.signal);
+    }
+  }
+
+  /** Whether the cache holds this shape's raw form; the bytes are checked when loaded. */
+  async #rawKeyKept(shape: ShapeKey, signal: AbortSignal): Promise<boolean> {
+    await this.#ensureStarted(signal);
+    const expected = KEY_DIGESTS[shape.keyFile];
+    const cache = await this.#openKeyCache(signal);
+    if (expected === undefined || cache === undefined || this.#rawKeyFormat === undefined)
+      return false;
+    const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/${shape.keyFile}`;
+    const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
+    return (
+      hit?.headers.get(rawSourceHeader) === expected.sha256 &&
+      hit.headers.get(rawFormatHeader) === this.#rawKeyFormat
+    );
+  }
+
+  async #loadKey(
+    shape: ShapeKey,
+    signal: AbortSignal,
+    onProgress?: (progress: KeyProgress) => void,
+  ): Promise<void> {
     await this.#ensureStarted(signal);
     if (this.#loaded.has(shape.keyFile)) {
       // Reported rather than returned silently: a second sweep would otherwise
@@ -239,10 +284,19 @@ export class WasmProver {
     const expected = KEY_DIGESTS[shape.keyFile];
     if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
     const cache = await this.#openKeyCache(signal);
+    const progress = (stage: KeyProgress["stage"], loaded: number) => {
+      const update = { keyFile: shape.keyFile, stage, loaded, total: expected.size };
+      this.#options.onKeyProgress?.(update);
+      onProgress?.(update);
+    };
+    const downloaded =
+      this.#options.onKeyProgress === undefined && onProgress === undefined
+        ? undefined
+        : (loaded: number) => progress("download", loaded);
     const started = performance.now();
     let key =
       (await this.#cachedRawKey(cache, url, expected, signal)) ??
-      (await this.#pinnedKey(cache, url, expected, signal));
+      (await this.#pinnedKey(cache, url, expected, signal, downloaded));
     signal.throwIfAborted();
     this.#options.onMeasurement?.({
       step: "key-fetch",
@@ -253,6 +307,7 @@ export class WasmProver {
     signal.throwIfAborted();
 
     this.#loaded.clear();
+    progress("decode", expected.size);
     let response: WorkerResponse;
     try {
       response = await this.#installKey(shape, key, expected, cache);
@@ -261,7 +316,7 @@ export class WasmProver {
       // A raw entry the bridge no longer accepts is rebuilt from the pinned key.
       signal.throwIfAborted();
       await optionalCache(() => cache?.delete(rawKeyUrl(url)), signal);
-      key = await this.#pinnedKey(cache, url, expected, signal);
+      key = await this.#pinnedKey(cache, url, expected, signal, downloaded);
       signal.throwIfAborted();
       response = await this.#installKey(shape, key, expected, cache);
     }
@@ -366,6 +421,7 @@ export class WasmProver {
     url: string,
     expected: KeyDigest,
     signal: AbortSignal,
+    downloaded?: (loaded: number) => void,
   ): Promise<KeyBytes> {
     if (cache !== undefined) {
       const hit = await optionalCache(() => cache.match(url), signal);
@@ -383,7 +439,7 @@ export class WasmProver {
     if (!response.ok) {
       throw new WasmProverError("wasm_key_download_failed");
     }
-    const bytes = await abortable(response.arrayBuffer(), signal);
+    const bytes = await abortable(readKey(response, expected.size, downloaded), signal);
     if (!(await abortable(matchesDigest(bytes, expected), signal))) {
       throw new WasmProverError("wasm_key_digest_mismatch");
     }
@@ -592,6 +648,30 @@ type KeyBytes = Readonly<{ bytes: ArrayBuffer; raw: boolean; source: "cache" | "
 export interface KeyDigest {
   readonly size: number;
   readonly sha256: string;
+}
+
+/** Reads a key body, reporting bytes as they arrive and stopping past the pinned size. */
+async function readKey(
+  response: Response,
+  size: number,
+  downloaded?: (loaded: number) => void,
+): Promise<ArrayBuffer> {
+  const reader = downloaded === undefined ? undefined : response.body?.getReader();
+  if (reader === undefined) return response.arrayBuffer();
+  const bytes = new Uint8Array(size);
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (loaded + value.byteLength > size) {
+      await reader.cancel();
+      throw new WasmProverError("wasm_key_digest_mismatch");
+    }
+    bytes.set(value, loaded);
+    loaded += value.byteLength;
+    downloaded?.(loaded);
+  }
+  return loaded === size ? bytes.buffer : bytes.buffer.slice(0, loaded);
 }
 
 async function sha256Hex(bytes: BufferSource): Promise<string> {

@@ -55,6 +55,19 @@ npx --no-install zolana-prover-assets --output public --keys transfer_confidenti
 
 Keys are 9–362 MB each for confidential transfers (16 MB for 2x2, 94 MB for 12x8) and 56–380 MB for merge; deserialized circuits and proving work need additional memory. Only one deserialized key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points, which takes seconds in wasm (about 4 s for 2x2), and stores the decoded raw form in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in about a tenth of a second (2x2). The raw form is about 1.6× the file's size, and storage is subject to the browser's quota. Keys live in the Cache API store `zolana-proving-keys-<key set>`, and stores left by other key sets are deleted on first use. Pass `persistStorage: true` to ask the browser not to evict them under storage pressure (`navigator.storage.persist()`; Firefox asks the user). Install only the shapes you use, and budget separately for download/storage size and runtime memory.
 
+## Prefetch keys
+
+`prefetch` downloads, checks and decodes keys ahead of the proofs that need them, for example right after a wallet connects, so the first send doesn't wait seconds for its key. Shapes whose decoded form is already cached are skipped, and a proof requested meanwhile runs after the shape in progress:
+
+```ts
+await prover.prefetch({
+  shapes: [shapeByLabel("1x2"), shapeByLabel("2x2")],
+  onProgress: ({ keyFile, stage, loaded, total }) => render(keyFile, stage, loaded / total),
+});
+```
+
+`stage` is `download` while bytes arrive and `decode` once the worker starts loading the key. Pass `onKeyProgress` to the constructor to receive the same events for every load, including the ones a proof triggers. Without the Cache API only the last prefetched shape stays loaded.
+
 ## Lifecycle and failures
 
 - First use initializes the worker automatically. Requests are serialized; only one deserialized key is resident at a time.
