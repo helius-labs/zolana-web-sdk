@@ -1,6 +1,6 @@
 # Upstream
 
-The browser example depends on the published `@heliuslabs/zolana@0.3.1-alpha`. `wasm` follows `helius-labs/zolana` main at `1171f1c76573636a1aa2768899c75d7a6937ca4c`, ahead of that release, and is re-pinned to the commit `0.3.2-alpha` is cut from when it is published; until then the bridge does not prove the pinned SDK's requests. The keys are pinned in `wasm/prover/provingkeys/proving-keys.lock`.
+The browser example depends on the published `@heliuslabs/zolana@0.4.0-alpha`. `wasm` follows `helius-labs/zolana` at tag `v0.4.0-alpha` (`0fde5f1e1e209b85896362c9293ec0b60bbf7563`), the commit that release was cut from, so the bridge accepts that SDK's `/prove` requests and proves with the keys pinned in `wasm/prover/provingkeys/proving-keys.lock`. A new SDK release re-pins both together.
 
 Source mapping:
 
