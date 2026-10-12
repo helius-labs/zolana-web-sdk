@@ -55,8 +55,11 @@ it("records shapes sent to a proving key's own path", async () => {
   expect(shapes).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ label: "2x2" }));
 });
 it.each([
-  ["http://localhost/prover/prove", { kind: "unsupported" }],
+  ["http://localhost/prover/prove", { kind: "prove" }],
+  ["http://localhost/prover/prove?api-key=secret", { kind: "prove" }],
   ["http://localhost/prover/prove/", { kind: "unsupported" }],
+  ["http://localhost/prover/prove/status", { kind: "unsupported" }],
+  ["http://localhost/prover/prove/transfer_ring_authority_4_4", { kind: "prove", keyFile: "transfer_ring_authority_4_4.key" }],
   ["http://localhost/prover/prove/merge_8_1", { kind: "prove", keyFile: "merge_8_1.key" }],
   ["http://localhost/prover/prove/merge_8_1/indexed", { kind: "unsupported" }],
   ["http://localhost/prover/prove/merge_8_1%2Findexed", { kind: "unsupported" }],
@@ -67,6 +70,18 @@ it.each([
   ["http://127.0.0.1/prover/prove", undefined],
 ])("routes %s", (url, route) => {
   expect(proveRoute(new URL(url), "http://localhost/prover/")).toEqual(route);
+});
+it("routes the Helius gateway's key-less prove path", () => {
+  const gateway = "https://devnet.helius-rpc.com/v1/zolana?api-key=secret";
+  expect(
+    proveRoute(new URL("https://devnet.helius-rpc.com/v1/zolana/prove?api-key=secret"), gateway),
+  ).toEqual({ kind: "prove" });
+  expect(
+    proveRoute(new URL("https://devnet.helius-rpc.com/v1/zolana/prove/status?jobId=1"), gateway),
+  ).toEqual({ kind: "unsupported" });
+  expect(proveRoute(new URL("https://devnet.helius-rpc.com/v1/zolana/getIndexerSlot"), gateway)).toBe(
+    undefined,
+  );
 });
 it("does not coerce malformed shape declarations", () => {
   expect(

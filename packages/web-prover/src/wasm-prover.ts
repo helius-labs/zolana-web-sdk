@@ -336,7 +336,7 @@ export class WasmProver {
         const body = await abortable(readBody(input, init), signal);
         if (body === undefined) throw new WasmProverError("wasm_invalid_request");
         // The path names the proving key; prove nothing the body does not match.
-        if (proofRequestShape(body)?.keyFile !== route.keyFile) {
+        if (route.keyFile !== undefined && proofRequestShape(body)?.keyFile !== route.keyFile) {
           throw new WasmProverError("wasm_invalid_request");
         }
         const result = await this.proveRequest(body, signal);
