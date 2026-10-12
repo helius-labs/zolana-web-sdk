@@ -1,11 +1,13 @@
-import { chmod, copyFile, cp, mkdir } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = join(root, "packages/web-prover/dist");
-await cp(join(root, "dist/bridge"), join(output, "dist/bridge"), { recursive: true });
+const manifest = JSON.parse(await readFile(join(root, "dist/bridge/manifest.json"), "utf8"));
 for (const path of [
+  "dist/bridge/manifest.json",
+  ...manifest.files.map(({ asset }) => `dist/bridge/${asset}`),
   "scripts/setup-assets.mjs",
   "runtime.lock.json",
   "wasm/prover/provingkeys/proving-keys.lock",
