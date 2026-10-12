@@ -66,7 +66,7 @@ For local development with already-built Mopro bindings and keys, `npm run stage
 
 For an installed package without this repository, run `npx --no-install zolana-prover-assets --output public`. See the [package guide](packages/web-prover/README.md) for asset hosting, integrity, supported bundlers, error codes and lifecycle behavior. The sanitized Go bridge ships in the package; the accelerator and proving keys are downloaded only when you explicitly run the asset command.
 
-The default key is demo-only 2x2. For real transfers, explicitly select the needed locked shapes, for example `--keys transfer_confidential_1_2.key,transfer_confidential_2_2.key`. This replaces the default key-manifest selection; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
+The default key is demo-only 2x2. For real transfers, explicitly select the needed locked shapes, for example `--keys transfer_confidential_1_2.key,transfer_confidential_2_2.key`. This replaces the default selection; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
 
 ```ts
 import { ZolanaWebProver } from "@heliuslabs/zolana-web-prover";

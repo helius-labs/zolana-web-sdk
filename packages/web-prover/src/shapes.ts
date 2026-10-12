@@ -5,12 +5,11 @@
  * `prover-test/spp/protocol/shape.go`, and the on-chain verifier -- cheapest
  * first, so the order doubles as the smallest-fit search order.
  *
- * The sizes below exist only so the UI can total them before fetching anything.
- * `keys/manifest.json`, generated from `proving-keys.lock` by `zolana-prover-assets`, is
- * what a downloaded key is actually validated against -- a key rotation changes
- * every size and digest, and a copy in source silently goes stale across a
- * rebase.
+ * Key sizes come from `key-digests.ts`, generated from `proving-keys.lock`, which
+ * is also what a downloaded key is validated against.
  */
+
+import { KEY_DIGESTS } from "./key-digests.js";
 
 export interface Shape {
   readonly inputs: number;
@@ -22,80 +21,88 @@ export interface ShapeKey extends Shape {
   readonly label: string;
   /** Proving-key file name, matching the CloudFront/S3 object name. */
   readonly keyFile: string;
-  /** Proving-key size in bytes, from the committed lockfile. */
+  /** Proving-key size in bytes, from the pinned lockfile. */
   readonly keyBytes: number;
 }
 
-function entry(inputs: number, outputs: number, keyBytes: number): ShapeKey {
+function pinnedSize(keyFile: string): number {
+  const digest = KEY_DIGESTS[keyFile];
+  if (digest === undefined) throw new Error(`${keyFile} is not in the pinned key set`);
+  return digest.size;
+}
+
+function entry(inputs: number, outputs: number): ShapeKey {
+  const keyFile = `transfer_confidential_${String(inputs)}_${String(outputs)}.key`;
   return Object.freeze({
     inputs,
     outputs,
     label: `${String(inputs)}x${String(outputs)}`,
-    keyFile: `transfer_confidential_${String(inputs)}_${String(outputs)}.key`,
-    keyBytes,
+    keyFile,
+    keyBytes: pinnedSize(keyFile),
   });
 }
 
 /** Confidential (default transact) rail only, ring rail keys are out of scope. */
 export const TRANSFER_SHAPES: readonly ShapeKey[] = Object.freeze([
-  entry(1, 2, 9_268_057),
-  entry(1, 4, 11_320_903),
-  entry(1, 8, 13_695_140),
-  entry(2, 2, 16_407_295),
-  entry(2, 4, 17_416_909),
-  entry(1, 16, 18_119_894),
-  entry(2, 8, 21_887_446),
-  entry(3, 2, 24_424_541),
-  entry(3, 4, 25_433_887),
-  entry(2, 16, 26_327_780),
-  entry(3, 8, 27_804_471),
-  entry(4, 2, 30_346_432),
-  entry(4, 4, 31_361_454),
-  entry(4, 8, 33_727_897),
-  entry(5, 2, 36_449_879),
-  entry(5, 4, 37_464_519),
-  entry(4, 16, 38_204_323),
-  entry(5, 8, 44_025_900),
-  entry(6, 2, 46_571_502),
-  entry(6, 4, 47_591_772),
-  entry(5, 16, 48_520_274),
-  entry(6, 8, 49_957_349),
-  entry(8, 2, 58_604_067),
-  entry(8, 4, 59_617_404),
-  entry(8, 8, 62_007_104),
-  entry(8, 16, 66_535_995),
-  entry(12, 2, 90_894_233),
-  entry(12, 4, 91_932_405),
-  entry(12, 8, 94_355_203),
-  entry(16, 2, 114_870_607),
-  entry(16, 4, 115_913_395),
-  entry(16, 8, 118_361_316),
-  entry(24, 2, 179_892_108),
-  entry(24, 4, 180_955_692),
-  entry(32, 2, 228_023_589),
-  entry(40, 2, 275_193_373),
-  entry(48, 2, 356_237_189),
-  entry(49, 2, 362_114_005),
+  entry(1, 2),
+  entry(1, 4),
+  entry(1, 8),
+  entry(2, 2),
+  entry(2, 4),
+  entry(1, 16),
+  entry(2, 8),
+  entry(3, 2),
+  entry(3, 4),
+  entry(2, 16),
+  entry(3, 8),
+  entry(4, 2),
+  entry(4, 4),
+  entry(4, 8),
+  entry(5, 2),
+  entry(5, 4),
+  entry(4, 16),
+  entry(5, 8),
+  entry(6, 2),
+  entry(6, 4),
+  entry(5, 16),
+  entry(6, 8),
+  entry(8, 2),
+  entry(8, 4),
+  entry(8, 8),
+  entry(8, 16),
+  entry(12, 2),
+  entry(12, 4),
+  entry(12, 8),
+  entry(16, 2),
+  entry(16, 4),
+  entry(16, 8),
+  entry(24, 2),
+  entry(24, 4),
+  entry(32, 2),
+  entry(40, 2),
+  entry(48, 2),
+  entry(49, 2),
 ]);
 
-function mergeEntry(inputs: number, keyBytes: number): ShapeKey {
+function mergeEntry(inputs: number): ShapeKey {
+  const keyFile = `merge_${String(inputs)}_1.key`;
   return Object.freeze({
     inputs,
     outputs: 1,
     label: `merge ${String(inputs)}x1`,
-    keyFile: `merge_${String(inputs)}_1.key`,
-    keyBytes,
+    keyFile,
+    keyBytes: pinnedSize(keyFile),
   });
 }
 
 /** The smallest merge circuit. */
-export const MERGE_SHAPE: ShapeKey = mergeEntry(8, 55_767_611);
+export const MERGE_SHAPE: ShapeKey = mergeEntry(8);
 
 /** The merge circuits, by input count, mirroring `SupportedInputCounts` in `spp_merge/shared`. */
 export const MERGE_SHAPES: readonly ShapeKey[] = Object.freeze([
   MERGE_SHAPE,
-  mergeEntry(24, 173_052_578),
-  mergeEntry(54, 379_646_246),
+  mergeEntry(24),
+  mergeEntry(54),
 ]);
 
 export const MERGE_KEY_FILE = MERGE_SHAPE.keyFile;

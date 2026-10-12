@@ -47,9 +47,6 @@ const root = new URL("../../../../", import.meta.url);
 const runtimeLock = JSON.parse(readFileSync(new URL("runtime.lock.json", root), "utf8")) as {
   provingKeysBaseUrl: string;
 };
-const keyLock = JSON.parse(
-  readFileSync(new URL("wasm/prover/provingkeys/proving-keys.lock", root), "utf8"),
-) as { keys: Record<string, { size: number; sha256: string }> };
 
 type ZolanaClient = Awaited<ReturnType<typeof createZolanaClient>>;
 type Actor = Readonly<{ signer: KeyPairSigner; keypair: ShieldedKeypair }>;
@@ -69,10 +66,8 @@ it.skipIf(funderPath === undefined)(
       keyBaseUrl,
       proverUrl: endpoints.proverUrl,
       workerFactory: nodeProverWorker,
-      // What setup-assets writes to keys/manifest.json, served beside the CDN keys.
       fetch: async (input, init) => {
         const url = input instanceof Request ? input.url : String(input);
-        if (url === `${keyBaseUrl}/manifest.json`) return Response.json(keyLock.keys);
         if (/\/prove(\/|$)/u.test(new URL(url).pathname)) remoteProve.push(url);
         return fetch(input, init);
       },

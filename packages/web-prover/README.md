@@ -18,7 +18,7 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-Use HTTPS (localhost is suitable for development) and a bundler that preserves the emitted module worker asset URL; the packed-consumer CI tests Vite's production build. The accelerator must remain beside `zolana-prover.wasm` at `accelerator/gnark_kernel.js`. These headers are required for threaded proving. Set `threads: 0` for Go-only proving without cross-origin isolation. Apply compatible CORS/CORP policies if you host assets on another origin. The hosted key manifest is a trust input: serve the generated, pinned `keys/manifest.json` and keys over a trusted origin, not an arbitrary caller-supplied manifest.
+Use HTTPS (localhost is suitable for development) and a bundler that preserves the emitted module worker asset URL; the packed-consumer CI tests Vite's production build. The accelerator must remain beside `zolana-prover.wasm` at `accelerator/gnark_kernel.js`. These headers are required for threaded proving. Set `threads: 0` for Go-only proving without cross-origin isolation. Apply compatible CORS/CORP policies if you host assets on another origin. Every key is checked against the size and SHA-256 bundled in the package from the pinned proving-keys lockfile, so the key host does not need to be trusted for integrity.
 
 ## Prove locally
 
@@ -51,7 +51,7 @@ Without `--keys`, the asset command installs only the demo's 2x2 key. Real trans
 npx --no-install zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key
 ```
 
-`--keys` replaces the default selection and writes `keys/manifest.json` for exactly that list. Names must be supported confidential-transfer keys or `merge_8_1.key` present in the pinned proving-keys lockfile; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key/manifest entry fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list.
+`--keys` replaces the default selection. Names must be confidential-transfer or merge keys present in the pinned proving-keys lockfile; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list.
 
 Keys are 9–362 MB each for confidential transfers (16 MB for 2x2, 94 MB for 12x8) and 56–380 MB for merge; deserialized circuits and proving work need additional memory. Only one deserialized key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points, which takes seconds in wasm (about 4 s for 2x2), and stores the decoded raw form in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in about a tenth of a second (2x2). The raw form is about 1.6× the file's size, and storage is subject to the browser's quota. Install only the shapes you use, and budget separately for download/storage size and runtime memory.
 

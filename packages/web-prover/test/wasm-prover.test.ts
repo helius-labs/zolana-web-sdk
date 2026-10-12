@@ -16,6 +16,13 @@ const key = new Uint8Array([1, 2, 3]);
 const rawKey = new Uint8Array([7, 7, 7, 7]);
 const factory = () => new Worker("test-worker");
 
+// Every pinned key is the three bytes of `key` in these tests.
+vi.mock("../src/key-digests.js", async (importOriginal) => {
+  const { KEY_DIGESTS } = await importOriginal<typeof import("../src/key-digests.js")>();
+  const digest = { size: 3, sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81" };
+  return { KEY_DIGESTS: Object.fromEntries(Object.keys(KEY_DIGESTS).map((name) => [name, digest])) };
+});
+
 class TestWorker extends EventTarget {
   static instances: TestWorker[] = [];
   static holdInit = false;
@@ -95,19 +102,7 @@ function failure(work: Promise<unknown>): Promise<unknown> {
   );
 }
 async function fixture(onMeasurement: (measurement: Measurement) => void = () => {}) {
-  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", key)), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
-    if (String(input).endsWith("manifest.json")) {
-      return Response.json(
-        Object.fromEntries(
-          TRANSFER_SHAPES.map((shape) => [shape.keyFile, { size: key.length, sha256: digest }]),
-        ),
-      );
-    }
-    return new Response(key);
-  });
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
   const prover = new WasmProver({
     wasmUrl: "/prover/test.wasm",
     keyBaseUrl: "/keys",
@@ -532,7 +527,7 @@ describe("best-effort proving-key cache", () => {
     const { cache } = cacheFixture();
     cache.match.mockResolvedValue(new Response(key));
     await prover.proveRequest(body);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
     expect(cache.delete).not.toHaveBeenCalled();
     expect(cache.put).not.toHaveBeenCalled();
     prover.terminate();
@@ -564,7 +559,7 @@ describe("best-effort proving-key cache", () => {
     const error = new Error("digest unavailable");
     vi.spyOn(crypto.subtle, "digest").mockRejectedValue(error);
     await expect(prover.proveRequest(body)).rejects.toBe(error);
-    expect(fetch).toHaveBeenCalledTimes(source === "cached" ? 1 : 2);
+    expect(fetch).toHaveBeenCalledTimes(source === "cached" ? 0 : 1);
     expect(current().requests.some((request) => request.kind === "loadKey")).toBe(false);
     prover.terminate();
   });

@@ -114,9 +114,9 @@ test("standalone setup uses pinned local assets without requiring the source tre
   );
   await assert.rejects(readFile(join(output, "fixtures/transfer-2x3.json")), { code: "ENOENT" });
   assert.doesNotMatch(result.stdout, /examples\/browser/);
-  assert.deepEqual(JSON.parse(await readFile(join(output, "keys/manifest.json"), "utf8")), {
-    "transfer_confidential_2_2.key": digest(bytes),
-  });
+  assert.deepEqual(await readFile(join(output, "keys/transfer_confidential_2_2.key")), bytes);
+  // The package validates keys against digests it bundles, not a served manifest.
+  await assert.rejects(readFile(join(output, "keys/manifest.json")), { code: "ENOENT" });
   await assert.rejects(readFile(join(root, "packages/web-prover/src/vendor/wasm_exec.js")), {
     code: "ENOENT",
   });
@@ -158,15 +158,12 @@ test("standalone setup refuses a bridge manifest without the request fixture", a
   assert.match(run().stderr, /Rebuilt Go bridge is missing/);
 });
 
-test("explicit keys replace the demo default and emit only the selected locked digests", async (context) => {
+test("explicit keys replace the demo default and install only the selected locked keys", async (context) => {
   const { output, bytes, run } = await fixture(context);
   const result = run("--keys", "transfer_confidential_1_2.key,merge_8_1.key");
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(await readFile(join(output, "keys/manifest.json"), "utf8")), {
-    "transfer_confidential_1_2.key": digest(bytes),
-    "merge_8_1.key": digest(bytes),
-  });
   assert.deepEqual(await readFile(join(output, "keys/transfer_confidential_1_2.key")), bytes);
+  assert.deepEqual(await readFile(join(output, "keys/merge_8_1.key")), bytes);
   await assert.rejects(readFile(join(output, "keys/transfer_confidential_2_2.key")), {
     code: "ENOENT",
   });
