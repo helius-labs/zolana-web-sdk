@@ -1,11 +1,13 @@
 # Zolana Web SDK
 
-Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the Arkworks browser demo.
+Local Zolana Groth16 proving in the browser: `@zolana/web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
 
 ## Packages
 
 - `@zolana/web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
-- `examples/browser` is the focused Arkworks UI for generating one proof or benchmarking five proofs locally. Its transaction helpers use the published `@heliuslabs/zolana@0.4.0-alpha`, the release whose `/prove` requests and proving keys the bridge matches (see [UPSTREAM.md](UPSTREAM.md)); the packed prover does not depend on it.
+- [`examples/wallet`](examples/wallet/README.md) is the integration example: a devnet private wallet on the published `@heliuslabs/zolana@0.4.0-alpha` that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
+- `examples/browser` is a prover benchmark. It proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, to time the Go and Arkworks engines on one proof or five.
+- `@zolana/web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
 - `wasm` is a self-contained Go module for the browser prover bridge.
 
 ## Setup
@@ -13,7 +15,8 @@ Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the Ark
 ```sh
 npm ci
 npm run setup
-npm run dev
+npm run dev         # the benchmark
+npm run dev:wallet  # the wallet example, after its setup in examples/wallet/README.md
 ```
 
 `npm run setup` builds the sanitized Go bridge with Go 1.27.1 and stages the demo request fixture, then downloads and verifies the pinned accelerator and the 2-input/2-output proving key. Source builds require Go; installed-package users need only Node.js and the asset command, not Go, Rust, Mopro or `wasm-pack`. Setup never restores the old pinned release's Go Wasm, shim or request fixture.
@@ -28,7 +31,7 @@ npm run test:browser
 npm run test:consumer
 ```
 
-The browser test starts and stops its own Vite server. Set `DEMO_URL` only when testing an already-running deployment.
+The browser test starts and stops its own Vite server. CI runs only these hermetic gates; the wallet example's devnet test, run by hand with a funded key, is the end-to-end check with requests the SDK builds. Set `DEMO_URL` only when testing an already-running deployment.
 
 The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, and runs production-built Go and Arkworks proofs with malformed-witness privacy and recovery checks. It needs Chrome and the staged runtime/key assets. Existing Go, example and browser gates remain enabled.
 

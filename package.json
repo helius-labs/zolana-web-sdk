@@ -20,6 +20,7 @@
     "test:e2e": "npm run test:e2e --workspace @zolana/browser-example",
     "test:go": "cd wasm && go test ./...",
     "dev": "npm run dev --workspace @zolana/browser-example",
+    "dev:wallet": "npm run dev --workspace @zolana/wallet-example",
     "setup": "npm run build:prover && node ./scripts/setup-assets.mjs",
     "build:wasm": "./scripts/build-wasm.sh",
     "build:runtime": "./scripts/build-runtime-release.sh",
