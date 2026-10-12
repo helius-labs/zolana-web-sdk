@@ -5,7 +5,7 @@ Standalone browser SDK for producing Zolana Groth16 proofs locally, plus the Ark
 ## Packages
 
 - `@zolana/web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
-- `examples/browser` is the focused Arkworks UI for generating one proof or benchmarking five proofs locally. Its transaction helpers use the published `@heliuslabs/zolana@0.3.1-alpha`, the release whose `/prove` requests and proving keys the bridge matches (see [UPSTREAM.md](UPSTREAM.md)); the packed prover does not depend on it.
+- `examples/browser` is the focused Arkworks UI for generating one proof or benchmarking five proofs locally. Its transaction helpers use the published `@heliuslabs/zolana@0.4.0-alpha`, the release whose `/prove` requests and proving keys the bridge matches (see [UPSTREAM.md](UPSTREAM.md)); the packed prover does not depend on it.
 - `wasm` is a self-contained Go module for the browser prover bridge.
 
 ## Setup
