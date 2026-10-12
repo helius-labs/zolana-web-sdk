@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Local Zolana Groth16 proving for browsers.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/helius-labs/zolana-web-sdk.git",
+    "directory": "packages/web-prover"
+  },
   "files": [
     "dist"
   ],
@@ -26,5 +31,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

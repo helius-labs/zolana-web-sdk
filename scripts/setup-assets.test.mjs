@@ -39,7 +39,7 @@ async function fixture(context, destination = "examples/browser/public/prover/te
         },
         {
           asset: "old-fixture.json",
-          destination: "examples/browser/public/fixtures/transfer-2x2.json",
+          destination: "examples/browser/public/fixtures/transfer-2x3.json",
           ...digest(bytes),
         },
       ],
@@ -112,6 +112,8 @@ test("standalone setup uses pinned local assets without requiring the source tre
     await readFile(join(output, "fixtures/transfer-2x2.json"), "utf8"),
     "rebuilt sanitized bridge",
   );
+  await assert.rejects(readFile(join(output, "fixtures/transfer-2x3.json")), { code: "ENOENT" });
+  assert.doesNotMatch(result.stdout, /examples\/browser/);
   assert.deepEqual(JSON.parse(await readFile(join(output, "keys/manifest.json"), "utf8")), {
     "transfer_confidential_2_2.key": digest(bytes),
   });

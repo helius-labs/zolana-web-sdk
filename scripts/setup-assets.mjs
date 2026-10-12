@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -96,25 +96,28 @@ if (!Array.isArray(runtimeManifest.files) || runtimeManifest.files.length === 0)
   throw new Error("Runtime manifest does not contain any files");
 }
 
+const shown = (path) => relative(process.cwd(), path) || ".";
+
 for (const entry of runtimeManifest.files) {
-  if (bridgeFiles.has(entry.destination)) continue;
+  // The rebuilt bridge brings its own request fixture; a release's is for older circuits.
+  if (bridgeFiles.has(entry.destination) || entry.destination.startsWith("examples/browser/public/fixtures/")) continue;
   const destination = checkedDestination(entry.destination);
   if (destination === undefined) continue;
   if (await existingFileMatches(destination, entry)) {
-    console.log(`Using ${entry.destination}`);
+    console.log(`Using ${shown(destination)}`);
     continue;
   }
   const bytes = await loadAsset(runtimeBaseUrl, entry.asset);
   verifyBytes(entry.asset, bytes, entry);
   await writeAtomically(destination, bytes);
-  console.log(`Installed ${entry.destination}`);
+  console.log(`Installed ${shown(destination)}`);
 }
 
 for (const [name, { entry, bytes }] of bridgeFiles) {
   const destination = checkedDestination(name);
   if (destination === undefined) continue;
   if (!(await existingFileMatches(destination, entry))) await writeAtomically(destination, bytes);
-  console.log(`Using rebuilt Go bridge: ${name}`);
+  console.log(`Using rebuilt Go bridge: ${shown(destination)}`);
 }
 
 const keyManifest = {};
@@ -125,9 +128,9 @@ for (const name of selectedKeys) {
     const bytes = await loadAsset(provingKeysBaseUrl, name);
     verifyBytes(name, bytes, entry);
     await writeAtomically(destination, bytes);
-    console.log(`Installed examples/browser/public/keys/${name}`);
+    console.log(`Installed ${shown(destination)}`);
   } else {
-    console.log(`Using examples/browser/public/keys/${name}`);
+    console.log(`Using ${shown(destination)}`);
   }
   keyManifest[name] = { size: entry.size, sha256: entry.sha256 };
 }
