@@ -1,0 +1,33 @@
+{
+  "name": "@zolana/wallet-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A devnet private wallet that proves every transaction in the browser.",
+  "scripts": {
+    "assets": "zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key,transfer_confidential_3_2.key,transfer_confidential_1_4.key,transfer_confidential_2_4.key",
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
+    "test:devnet": "node scripts/test-devnet.ts"
+  },
+  "dependencies": {
+    "@heliuslabs/zolana": "0.4.0-alpha",
+    "@solana/kit": "^8.3.0",
+    "@zolana/web-prover": "*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@solana-program/system": "^0.14.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/selenium-webdriver": "^4.35.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "selenium-webdriver": "^4.27.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5"
+  }
+}
