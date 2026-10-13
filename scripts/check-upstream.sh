@@ -109,7 +109,8 @@ for module in go github.com/consensys/gnark github.com/consensys/gnark-crypto; d
   [[ "$got" == "$want" ]] || fail "wasm/go.mod pins $module $got, upstream uses $want"
 done
 
-# The key lock the bridge embeds is also what setup downloads and shapes.ts sizes.
+# The key lock the bridge embeds is also what setup downloads and shapes.ts lists;
+# key-digests.ts, which carries the sizes, is checked against the lock by its test.
 keys="$wasm/prover/provingkeys/proving-keys.lock"
 python3 - "$keys" "$root/runtime.lock.json" "$root/packages/web-prover/src/shapes.ts" "$(upstream prover/server/prover/common/key_downloader.go | grep -o 'defaultProvingKeysBaseURL = "[^"]*"' | cut -d'"' -f2)" <<'PY' || failed=1
 import json, re, sys
@@ -125,12 +126,11 @@ if rt["provingKeysBaseUrl"] != want: fail(f"runtime.lock.json provingKeysBaseUrl
 for k in rt["requiredKeys"]:
     if k not in keys: fail(f"runtime.lock.json requires {k}, absent from proving-keys.lock")
 src = open(shapes).read()
-listed = {}
-for i, o, n in re.findall(r"\bentry\((\d+), (\d+), ([\d_]+)\)", src): listed[f"transfer_confidential_{i}_{o}.key"] = int(n.replace("_", ""))
-for i, n in re.findall(r"\bmergeEntry\((\d+), ([\d_]+)\)", src): listed[f"merge_{i}_1.key"] = int(n.replace("_", ""))
-for k, n in listed.items():
+listed = {f"transfer_confidential_{i}_{o}.key" for i, o in re.findall(r"\bentry\((\d+), (\d+)\)", src)}
+listed |= {f"merge_{i}_1.key" for i in re.findall(r"\bmergeEntry\((\d+)\)", src)}
+if not listed: fail("shapes.ts lists no shapes; the parser no longer matches it")
+for k in listed:
     if k not in keys: fail(f"shapes.ts lists {k}, absent from proving-keys.lock")
-    elif keys[k]["size"] != n: fail(f"shapes.ts sizes {k} at {n}, lock says {keys[k]['size']}")
 for k in keys:
     if re.fullmatch(r"transfer_confidential_\d+_\d+\.key|merge_\d+_1\.key", k) and k not in listed: fail(f"proving-keys.lock has {k}, missing from shapes.ts")
 sys.exit(0 if ok else 1)
