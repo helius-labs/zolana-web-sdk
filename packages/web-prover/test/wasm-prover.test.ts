@@ -8,7 +8,7 @@ import {
   type WorkerResponse,
   type WorkerFatal,
 } from "../src/wasm-prover.js";
-import type { Measurement } from "../src/measurement.js";
+import type { KeyProgress, Measurement } from "../src/measurement.js";
 import { TRANSFER_SHAPES } from "../src/shapes.js";
 
 const body = JSON.stringify({ circuitType: "transfer-confidential", nInputs: 2, nOutputs: 2 });
@@ -743,5 +743,93 @@ describe("key cache per key set", () => {
     await opted.prover.proveRequest(body);
     opted.prover.terminate();
     expect(persist).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("prefetch and key progress", () => {
+  const twoByTwo = TRANSFER_SHAPES.find((shape) => shape.label === "2x2")!;
+  const oneByTwo = TRANSFER_SHAPES.find((shape) => shape.label === "1x2")!;
+
+  function memoryCache() {
+    const entries = new Map<string, Response>();
+    const cache = {
+      match: async (url: string) => entries.get(url)?.clone(),
+      put: async (url: string, response: Response) => {
+        entries.set(url, response);
+      },
+      delete: async (url: string) => entries.delete(url),
+    };
+    vi.stubGlobal("caches", { open: async () => cache, keys: async () => [] });
+    return entries;
+  }
+  const loadedFiles = () =>
+    current()
+      .requests.filter((request) => request.kind === "loadKey")
+      .map((request) => (request as Extract<WorkerRequest, { kind: "loadKey" }>).fileName);
+
+  beforeEach(() => {
+    TestWorker.rawKeyFormat = "raw-test";
+  });
+
+  it("decodes each shape once and skips shapes whose raw form is kept", async () => {
+    const entries = memoryCache();
+    const first = await fixture();
+    await first.prover.prefetch({ shapes: [oneByTwo, twoByTwo] });
+    expect(loadedFiles()).toEqual([oneByTwo.keyFile, twoByTwo.keyFile]);
+    expect([...entries.keys()].filter((url) => url.endsWith("?zolana-key=raw"))).toHaveLength(2);
+    first.prover.terminate();
+
+    const second = await fixture();
+    await second.prover.prefetch({ shapes: [oneByTwo, twoByTwo] });
+    expect(loadedFiles()).toEqual([]);
+    expect(second.fetch).not.toHaveBeenCalled();
+    second.prover.terminate();
+  });
+
+  it("runs a proof requested meanwhile before the remaining shapes", async () => {
+    memoryCache();
+    const { prover } = await fixture();
+    await prover.start();
+    current().hold = "loadKey";
+    const prefetching = prover.prefetch({ shapes: [oneByTwo, twoByTwo] });
+    await vi.waitFor(() => expect(loadedFiles()).toEqual([oneByTwo.keyFile]));
+    const proving = prover.proveRequest(body);
+    current().hold = undefined;
+    current().reply(request(current(), "loadKey"));
+    await Promise.all([prefetching, proving]);
+    expect(current().requests.map((value) => value.kind)).toEqual([
+      "init",
+      "loadKey",
+      "loadKey",
+      "prove",
+      "verify",
+    ]);
+    expect(loadedFiles()).toEqual([oneByTwo.keyFile, twoByTwo.keyFile]);
+    prover.terminate();
+  });
+
+  it("reports download progress up to the pinned size, then decode", async () => {
+    memoryCache();
+    const all: KeyProgress[] = [];
+    const prefetched: KeyProgress[] = [];
+    const { prover } = await fixture(() => {}, { onKeyProgress: (update) => all.push(update) });
+    await prover.prefetch({ shapes: [twoByTwo], onProgress: (update) => prefetched.push(update) });
+    const expected = [
+      { keyFile: twoByTwo.keyFile, stage: "download", loaded: 3, total: 3 },
+      { keyFile: twoByTwo.keyFile, stage: "decode", loaded: 3, total: 3 },
+    ];
+    expect(all).toEqual(expected);
+    expect(prefetched).toEqual(expected);
+    prover.terminate();
+  });
+
+  it("stops reading a key body larger than the pinned key", async () => {
+    const { prover, fetch } = await fixture(() => {}, { onKeyProgress: () => {} });
+    fetch.mockImplementation(async () => new Response(new Uint8Array([1, 2, 3, 4, 5])));
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({
+      code: "wasm_key_digest_mismatch",
+    });
+    expect(loadedFiles()).toEqual([]);
+    prover.terminate();
   });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatAmount, parseAmount } from "@heliuslabs/zolana";
 import { address, isAddress } from "@solana/kit";
-import type { Measurement } from "@heliuslabs/zolana-web-prover";
+import { shapeByLabel, type KeyProgress, type Measurement } from "@heliuslabs/zolana-web-prover";
 
 import { loadBurnerSeed, resetBurner } from "./burner.js";
 import { actions, openSession, snapshot, type PrivateTransaction, type Session, type Snapshot } from "./zolana.js";
@@ -31,6 +31,7 @@ export function App(): React.ReactElement {
   const [activity, setActivity] = useState<Activity[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [keys, setKeys] = useState("Preparing proving keys…");
   const [shieldAmount, setShieldAmount] = useState("0.01");
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("0.004");
@@ -53,6 +54,14 @@ export function App(): React.ReactElement {
       .then(async (opened) => {
         if (cancelled) return;
         setSession(opened);
+        // Download and decode the common shapes now, so the first send or unshield
+        // doesn't wait seconds for its key. Later visits read them from the cache.
+        void opened.prover
+          .prefetch({ shapes: [shapeByLabel("1x2"), shapeByLabel("2x2")], onProgress: (update) => setKeys(keyStatus(update)) })
+          .then(
+            () => setKeys("Proving keys ready"),
+            () => setKeys("Proving keys load on first use"),
+          );
         setState(await snapshot(opened));
       })
       .catch((cause: unknown) => setError(String(cause)));
@@ -102,6 +111,7 @@ export function App(): React.ReactElement {
           Devnet. Every proof is made in this browser by <code>@heliuslabs/zolana-web-prover</code>; the
           witness never leaves the page.
         </p>
+        <p className="muted" data-testid="keys">{keys}</p>
       </header>
 
       <section>
@@ -237,4 +247,9 @@ export function App(): React.ReactElement {
       </section>
     </main>
   );
+}
+
+function keyStatus({ keyFile, stage, loaded, total }: KeyProgress): string {
+  if (stage === "decode") return `Decoding ${keyFile}…`;
+  return `Downloading ${keyFile}: ${String(Math.floor((100 * loaded) / total))}%`;
 }
