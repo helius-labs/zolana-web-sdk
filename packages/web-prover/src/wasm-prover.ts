@@ -15,6 +15,7 @@ import { abortable } from "./abortable.js";
 import type { Measurement } from "./measurement.js";
 import { operationError, WasmProverError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
+import { KEY_DIGESTS } from "./key-digests.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { proofRequestShape, proveRoute } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
@@ -85,7 +86,6 @@ export class WasmProver {
   #factory: (() => Worker) | undefined;
   #initialization: Promise<void> | undefined;
   #lifetime = new AbortController();
-  #manifest: ReadonlyMap<string, KeyDigest> | undefined;
   #rawKeyFormat: string | undefined;
   #nextId = 1;
   #queue: Promise<unknown> = Promise.resolve();
@@ -230,7 +230,7 @@ export class WasmProver {
     }
 
     const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/${shape.keyFile}`;
-    const expected = (await this.#keyManifest(signal)).get(shape.keyFile);
+    const expected = KEY_DIGESTS[shape.keyFile];
     if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
     const cache = await optionalCache(() => globalThis.caches?.open(keyCacheName), signal);
     const started = performance.now();
@@ -305,39 +305,6 @@ export class WasmProver {
       },
       [key.bytes],
     );
-  }
-
-  /**
-   * The digests `zolana-prover-assets` copied out of `proving-keys.lock`.
-   *
-   * Fetched once and required: a key rotation changes every size and digest, and
-   * validating against anything other than the lockfile lets a stale key through.
-   * That is not a theoretical failure -- a same-shape key from an older rotation
-   * deserializes cleanly and only surfaces as `groth16.Prove` reporting a witness
-   * size mismatch, which reads as a malformed request rather than a bad key.
-   */
-  async #keyManifest(signal: AbortSignal): Promise<ReadonlyMap<string, KeyDigest>> {
-    if (this.#manifest !== undefined) return this.#manifest;
-    const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/manifest.json`;
-    const response = await abortable(this.#fetch(url, { signal }), signal);
-    if (!response.ok) throw new WasmProverError("wasm_key_manifest_error");
-    let parsed: unknown;
-    try {
-      parsed = await abortable(response.json(), signal);
-    } catch (error) {
-      rethrowAbort(error, signal);
-      throw new WasmProverError("wasm_key_manifest_error");
-    }
-    signal.throwIfAborted();
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed) ||
-      !Object.values(parsed).every(isKeyDigest)
-    )
-      throw new WasmProverError("wasm_key_manifest_error");
-    this.#manifest = new Map(Object.entries(parsed) as [string, KeyDigest][]);
-    return this.#manifest;
   }
 
   /**
@@ -594,7 +561,7 @@ function rawKeyUrl(url: string): string {
 
 type KeyBytes = Readonly<{ bytes: ArrayBuffer; raw: boolean; source: "cache" | "network" }>;
 
-/** One entry of `keys/manifest.json`, copied from `proving-keys.lock`. */
+/** One entry of `KEY_DIGESTS`, copied from `proving-keys.lock`. */
 export interface KeyDigest {
   readonly size: number;
   readonly sha256: string;
@@ -626,19 +593,6 @@ function proverErrorResponse(
     status: 500,
     headers: { "content-type": "application/json" },
   });
-}
-
-function isKeyDigest(value: unknown): value is KeyDigest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "size" in value &&
-    Number.isSafeInteger(value.size) &&
-    Number(value.size) > 0 &&
-    "sha256" in value &&
-    typeof value.sha256 === "string" &&
-    /^[a-f0-9]{64}$/u.test(value.sha256)
-  );
 }
 
 function rethrowAbort(error: unknown, signal?: AbortSignal): void {

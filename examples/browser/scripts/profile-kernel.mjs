@@ -4,19 +4,21 @@ import { readFile } from 'node:fs/promises';
 export async function profileKernel(driver, count) {
   const shim = await readFile(new URL('../../../packages/web-prover/src/vendor/wasm_exec.js', import.meta.url), 'utf8');
   const code = shim + '\n(' + workerMain.toString() + ')();';
+  const lock = JSON.parse(await readFile(new URL('../../../wasm/prover/provingkeys/proving-keys.lock', import.meta.url), 'utf8'));
+  const pinned = lock.keys['transfer_confidential_2_2.key'];
   await driver.manage().setTimeouts({ script: 180000 });
-  return driver.executeAsyncScript(function(code, count, done) {
+  return driver.executeAsyncScript(function(code, count, pinned, done) {
     const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
     const worker = new Worker(url, { type: 'module' });
     const finish = value => { worker.terminate(); URL.revokeObjectURL(url); done(value); };
     worker.onmessage = event => finish(event.data);
     worker.onerror = event => finish({ error: event.message });
-    worker.postMessage({ count, base: location.origin });
-  }, code, count);
+    worker.postMessage({ count, base: location.origin, pinned });
+  }, code, count, pinned);
 }
 
 function workerMain() {
-  self.onmessage = async ({ data: { count, base } }) => {
+  self.onmessage = async ({ data: { count, base, pinned } }) => {
     try {
       const kernel = await import(base + '/prover/accelerator/gnark_kernel.js');
       await kernel.default();
@@ -45,12 +47,11 @@ function workerMain() {
       const api = globalThis.__zolanaProver;
       const unwrap = result => { if (result.error) throw new Error(result.error); return result; };
       const file = 'transfer_confidential_2_2.key';
-      const manifest = await (await fetch(base + '/keys/manifest.json')).json();
       const key = new Uint8Array(await (await fetch(base + '/keys/' + file)).arrayBuffer());
       const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', key))].map(b => b.toString(16).padStart(2, '0')).join('');
-      if (key.length !== manifest[file].size || digest !== manifest[file].sha256) throw new Error('Key digest mismatch');
+      if (key.length !== pinned.size || digest !== pinned.sha256) throw new Error('Key digest mismatch');
       const request = await (await fetch(base + '/fixtures/transfer-2x2.json')).text();
-      const prepare = unwrap(api.loadKey(file, key, manifest[file].sha256, false));
+      const prepare = unwrap(api.loadKey(file, key, pinned.sha256, false));
       const warmups = [], samples = [];
       for (let i = 0; i < 18; i++) {
         phases = {};

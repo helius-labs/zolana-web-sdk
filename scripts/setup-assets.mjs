@@ -43,7 +43,7 @@ if (
 for (const name of selectedKeys) {
   if (
     typeof name !== "string" ||
-    !/^(transfer_confidential_\d+_\d+|merge_8_1)\.key$/.test(name) ||
+    !/^(transfer_confidential_\d+_\d+|merge_\d+_1)\.key$/.test(name) ||
     !Object.hasOwn(provingKeysLock.keys, name)
   ) {
     throw new Error(
@@ -120,7 +120,6 @@ for (const [name, { entry, bytes }] of bridgeFiles) {
   console.log(`Using rebuilt Go bridge: ${shown(destination)}`);
 }
 
-const keyManifest = {};
 for (const name of selectedKeys) {
   const entry = provingKeysLock.keys[name];
   const destination = join(publicDirectory, "keys", name);
@@ -132,13 +131,8 @@ for (const name of selectedKeys) {
   } else {
     console.log(`Using ${shown(destination)}`);
   }
-  keyManifest[name] = { size: entry.size, sha256: entry.sha256 };
 }
 
-await writeAtomically(
-  join(publicDirectory, "keys/manifest.json"),
-  Buffer.from(`${JSON.stringify(keyManifest, null, 2)}\n`),
-);
 console.log(`Ready to prove with runtime ${runtimeLock.version}.`);
 
 function checkedDestination(value) {

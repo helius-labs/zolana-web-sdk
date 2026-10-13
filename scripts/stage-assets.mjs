@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,11 +16,9 @@ for (const file of ["gnark_kernel.js", "gnark_kernel_bg.wasm", "LICENSE-APACHE",
 }
 
 const lock = JSON.parse(await readFile(join(root, "wasm/prover/provingkeys/proving-keys.lock"), "utf8"));
-const manifest = {};
 const available = [];
 for (const [name, entry] of Object.entries(lock.keys)) {
-  if (!/^(transfer_confidential_\d+_\d+|merge_8_1)\.key$/.test(name)) continue;
-  manifest[name] = { size: entry.size, sha256: entry.sha256 };
+  if (!/^(transfer_confidential_\d+_\d+|merge_\d+_1)\.key$/.test(name)) continue;
   const source = join(resolve(keysDirectory), name);
   let bytes;
   try { bytes = await readFile(source); } catch (error) {
@@ -39,5 +37,4 @@ await mkdir(join(publicDirectory, "prover"), { recursive: true });
 await mkdir(join(publicDirectory, "keys"), { recursive: true });
 await cp(accelerator, join(publicDirectory, "prover/accelerator"), { recursive: true });
 for (const { source, name } of available) await cp(source, join(publicDirectory, "keys", name));
-await writeFile(join(publicDirectory, "keys/manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`Staged Mopro and ${available.length} proving key(s).`);

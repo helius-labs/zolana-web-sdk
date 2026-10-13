@@ -24,6 +24,7 @@
   "scripts": {
     "build": "../../scripts/build-wasm.sh && vite build && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "generate:keys": "node scripts/generate-key-digests.ts",
     "test": "vitest run"
   },
   "devDependencies": {

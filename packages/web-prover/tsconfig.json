@@ -16,7 +16,9 @@
     "skipLibCheck": true,
     // The vendored wasm_exec.js is plain JS imported for its side effect.
     "allowJs": true,
+    // Node runs scripts/*.ts directly, so they import each other with extensions.
+    "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"]
 }
