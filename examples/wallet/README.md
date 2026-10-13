@@ -16,6 +16,22 @@ const keys = LocalKeys.fromDerivationSeed({ solanaPublicKey, derivationSeed }, c
 
 The signer is a devnet-only key kept in `localStorage`, standing in for a wallet extension. Swapping in a wallet means replacing `signer`: it signs each transaction and, once, the SDK's derivation message (`ed25519DerivationMessage`) that `derivationSeed` is the signature of.
 
+## Pay a recipient and an app fee in one transfer
+
+With an app fee filled in, Send pays the recipient and the fee collector as two private outputs of one transfer, proved once. `@heliuslabs/zolana` 0.4.0-alpha has no builder for several recipients, so [`src/multi-transfer.ts`](src/multi-transfer.ts) assembles it from public primitives:
+
+```ts
+const transfer = new ConfidentialTransfer(owner, inputs, owner.solanaAddress());
+transfer.send(recipient, SOL_MINT, amount);
+transfer.send(feeCollector, SOL_MINT, fee);
+const prepared = transfer.prepare();
+// seal the outputs with a per-transaction key, then prove in the page
+const data = await client.proveTransact(prepared.finalize(encrypted), keys);
+const instruction = await getTransactInstructionAsync({ payer, inputTree, outputTree, data });
+```
+
+The SDK's builders check the proved transfer against the intent the user approved; this path has none, so it checks the prepared outputs against the payments itself. Two or three payments and the change take a 4-output proof, which spends at most 24 notes.
+
 ## Run
 
 From the repository root:
@@ -39,4 +55,4 @@ VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<key>" \
 npm run test:devnet --workspace @zolana/wallet-example
 ```
 
-Drives the page in Chrome with a fresh key the funder tops up with 0.05 devnet SOL: register, shield, send privately and unshield, failing unless the transfer and withdrawal are proved in the page. The key returns what is left to the funder.
+Drives the page in Chrome with a fresh key the funder tops up with 0.05 devnet SOL: register, shield, send privately, send with an app fee and unshield, failing unless every transfer and the withdrawal are proved in the page. The key returns what is left to the funder.

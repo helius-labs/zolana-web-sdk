@@ -34,6 +34,8 @@ export function App(): React.ReactElement {
   const [shieldAmount, setShieldAmount] = useState("0.01");
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("0.004");
+  const [fee, setFee] = useState("");
+  const [feeCollector, setFeeCollector] = useState("");
   const [unshieldAmount, setUnshieldAmount] = useState("0.002");
   const current = useRef<Activity | undefined>(undefined);
   const nextId = useRef(1);
@@ -147,11 +149,19 @@ export function App(): React.ReactElement {
               onSubmit={(event) => {
                 event.preventDefault();
                 const recipient = sendTo === "" ? owner : sendTo;
-                if (!isAddress(recipient)) {
+                const collector = feeCollector === "" ? owner : feeCollector;
+                if (!isAddress(recipient) || !isAddress(collector)) {
                   setError("The recipient is not a Solana address");
                   return;
                 }
-                void run(`Send ${sendAmount} SOL privately`, (s) => actions.send(s, address(recipient), amount(sendAmount)));
+                if (fee.trim() === "") {
+                  void run(`Send ${sendAmount} SOL privately`, (s) => actions.send(s, address(recipient), amount(sendAmount)));
+                  return;
+                }
+                // Recipient and fee collector are paid by one transfer and one proof.
+                void run(`Send ${sendAmount} SOL privately with a ${fee} SOL fee`, (s) =>
+                  actions.sendWithFee(s, address(recipient), amount(sendAmount), address(collector), amount(fee)),
+                );
               }}
             >
               <input
@@ -161,6 +171,18 @@ export function App(): React.ReactElement {
                 onChange={(e) => setSendTo(e.target.value)}
               />
               <input data-testid="send-amount" value={sendAmount} onChange={(e) => setSendAmount(e.target.value)} />
+              <input
+                data-testid="send-fee"
+                placeholder="App fee (optional)"
+                value={fee}
+                onChange={(e) => setFee(e.target.value)}
+              />
+              <input
+                data-testid="fee-collector"
+                placeholder="Fee collector (empty: yourself)"
+                value={feeCollector}
+                onChange={(e) => setFeeCollector(e.target.value)}
+              />
               <button data-testid="send" disabled={busy}>Send</button>
             </form>
             <form
