@@ -17,7 +17,7 @@ for (let index = 0; index < argumentsList.length; index += 2) {
     argumentsMap.has(flag)
   ) {
     throw new Error(
-      "Usage: zolana-prover-assets --output <public-directory> [--keys name1.key,name2.key]",
+      "Usage: zolana-prover-assets --output <public-directory> [--keys name1.key,name2.key | --keys none]",
     );
   }
   argumentsMap.set(flag, value);
@@ -30,15 +30,20 @@ const runtimeLock = JSON.parse(await readFile(join(root, "runtime.lock.json"), "
 const provingKeysLock = JSON.parse(
   await readFile(join(root, "wasm/prover/provingkeys/proving-keys.lock"), "utf8"),
 );
-const selectedKeys = argumentsMap.has("--keys")
-  ? argumentsMap.get("--keys").split(",")
-  : runtimeLock.requiredKeys;
+// `none` installs the runtime only, for an app that loads keys from the key CDN.
+const keysArgument = argumentsMap.get("--keys");
+const selectedKeys =
+  keysArgument === "none"
+    ? []
+    : keysArgument === undefined
+      ? runtimeLock.requiredKeys
+      : keysArgument.split(",");
 if (
   !Array.isArray(selectedKeys) ||
-  selectedKeys.length === 0 ||
+  (selectedKeys.length === 0 && keysArgument !== "none") ||
   new Set(selectedKeys).size !== selectedKeys.length
 ) {
-  throw new Error("Select a nonempty list of distinct proving-key names");
+  throw new Error("Select a nonempty list of distinct proving-key names, or none");
 }
 for (const name of selectedKeys) {
   if (

@@ -12,6 +12,7 @@ export {
   type ShapeKey,
 } from "./shapes.js";
 
+export { KEY_BASE_URL } from "./key-digests.js";
 export type { KeyProgress, Measurement } from "./measurement.js";
 export type { WasmProverErrorCode } from "./errors.js";
 

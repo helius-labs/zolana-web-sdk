@@ -8,6 +8,7 @@ interface LockEntry {
 }
 
 const lockUrl = new URL("../../../wasm/prover/provingkeys/proving-keys.lock", import.meta.url);
+const runtimeLockUrl = new URL("../../../runtime.lock.json", import.meta.url);
 const outputUrl = new URL("../src/key-digests.ts", import.meta.url);
 
 export const browserKey = /^(transfer_confidential_\d+_\d+|merge_\d+_1)\.key$/u;
@@ -26,6 +27,17 @@ export async function lockedKeySet(): Promise<string> {
   const keySet = (await readLock()).prefix.split("/").at(-1);
   if (keySet === undefined || !/^[0-9a-f]+$/u.test(keySet)) throw new Error("Unexpected lock prefix");
   return keySet;
+}
+
+/** The CDN folder of the pinned key set, checked against upstream by the drift gate. */
+export async function lockedKeyBaseUrl(): Promise<string> {
+  const { provingKeysBaseUrl } = JSON.parse(await readFile(runtimeLockUrl, "utf8")) as {
+    provingKeysBaseUrl: string;
+  };
+  if (!provingKeysBaseUrl.startsWith("https://") || !provingKeysBaseUrl.endsWith(`/${await lockedKeySet()}/`)) {
+    throw new Error("runtime.lock.json provingKeysBaseUrl does not name the lock's key set");
+  }
+  return provingKeysBaseUrl;
 }
 
 export async function lockedBrowserKeys(): Promise<Record<string, LockEntry>> {
@@ -47,6 +59,9 @@ if (import.meta.main) {
 
 /** The pinned key set's version folder on the proving-keys CDN. */
 export const KEY_SET = "${await lockedKeySet()}";
+
+/** Where the pinned key set is served from; the default \`keyBaseUrl\`. */
+export const KEY_BASE_URL = "${await lockedKeyBaseUrl()}";
 
 /** Size and sha256 of every proving key the browser prover can load. */
 export const KEY_DIGESTS: Readonly<Record<string, Readonly<{ size: number; sha256: string }>>> =
