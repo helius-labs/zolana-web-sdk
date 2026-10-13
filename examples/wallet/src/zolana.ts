@@ -26,7 +26,8 @@ import {
   type Transaction,
 } from "@solana/kit";
 import { ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
-import { buildPaymentsTransaction } from "./multi-transfer.js";
+import { buildPaymentsTransaction, type Payment } from "./multi-transfer.js";
+export type { Payment };
 
 export const endpoints = {
   solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
@@ -34,7 +35,7 @@ export const endpoints = {
   proverUrl: import.meta.env.VITE_PROVER_URL ?? "https://d21ni15goiip6l.cloudfront.net",
 };
 
-export type Client = Awaited<ReturnType<typeof createZolanaClient>>;
+type Client = Awaited<ReturnType<typeof createZolanaClient>>;
 export type PrivateTransaction = ReturnType<typeof getPrivateTransactions>[number];
 
 export interface Session {
@@ -130,25 +131,10 @@ export const actions = {
     const transaction = await buildTransferTransaction({ client, wallet, keys, feePayer: signer.address, recipient, amount });
     return submit(session, transaction);
   },
-  /** One proof pays the recipient and the fee collector, each a private output. */
-  async sendWithFee(
-    session: Session,
-    recipient: Address,
-    amount: bigint,
-    feeCollector: Address,
-    fee: bigint,
-  ): Promise<bigint> {
+  /** One transfer and one proof pay every recipient, each a private output. */
+  async pay(session: Session, payments: readonly Payment[]): Promise<bigint> {
     const { client, wallet, keys } = session;
-    const transaction = await buildPaymentsTransaction({
-      client,
-      wallet,
-      keys,
-      payments: [
-        { recipient, amount },
-        { recipient: feeCollector, amount: fee },
-      ],
-    });
-    return submit(session, transaction);
+    return submit(session, await buildPaymentsTransaction({ client, wallet, keys, payments }));
   },
   async unshield(session: Session, amount: bigint): Promise<bigint> {
     const { client, wallet, keys, signer } = session;

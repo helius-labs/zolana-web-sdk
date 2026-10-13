@@ -148,10 +148,14 @@ export function App(): React.ReactElement {
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                const recipient = sendTo === "" ? owner : sendTo;
-                const collector = feeCollector === "" ? owner : feeCollector;
-                if (!isAddress(recipient) || !isAddress(collector)) {
+                const recipient = sendTo.trim() === "" ? owner : sendTo.trim();
+                const collector = feeCollector.trim() === "" ? owner : feeCollector.trim();
+                if (!isAddress(recipient)) {
                   setError("The recipient is not a Solana address");
+                  return;
+                }
+                if (!isAddress(collector)) {
+                  setError("The fee collector is not a Solana address");
                   return;
                 }
                 if (fee.trim() === "") {
@@ -160,7 +164,10 @@ export function App(): React.ReactElement {
                 }
                 // Recipient and fee collector are paid by one transfer and one proof.
                 void run(`Send ${sendAmount} SOL privately with a ${fee} SOL fee`, (s) =>
-                  actions.sendWithFee(s, address(recipient), amount(sendAmount), address(collector), amount(fee)),
+                  actions.pay(s, [
+                    { recipient: address(recipient), amount: amount(sendAmount) },
+                    { recipient: address(collector), amount: amount(fee) },
+                  ]),
                 );
               }}
             >

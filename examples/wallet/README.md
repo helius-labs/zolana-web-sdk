@@ -26,11 +26,13 @@ transfer.send(recipient, SOL_MINT, amount);
 transfer.send(feeCollector, SOL_MINT, fee);
 const prepared = transfer.prepare();
 // seal the outputs with a per-transaction key, then prove in the page
-const data = await client.proveTransact(prepared.finalize(encrypted), keys);
+const encrypted = encryptConfidentialTransfer(tx, { outputs: prepared.outputs, assets: wallet.registry });
+const proofInputs = prepared.finalize({ txViewingPublicKey: encrypted.txViewingPublicKey, salt: encrypted.salt, payload: encrypted.payload });
+const data = await client.proveTransact(proofInputs, keys);
 const instruction = await getTransactInstructionAsync({ payer, inputTree, outputTree, data });
 ```
 
-The SDK's builders check the proved transfer against the intent the user approved; this path has none, so it checks the prepared outputs against the payments itself. Two or three payments and the change take a 4-output proof, which spends at most 24 UTXOs.
+The SDK's builders check the proved transfer against the intent the user approved; this path has none, so it checks the prepared outputs against the payments itself. Two payments and the change take a 4-output proof, which spends at most 24 UTXOs; for more payments the shape table decides.
 
 ## Run
 
@@ -43,7 +45,7 @@ npm run assets --workspace @zolana/wallet-example
 VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<key>" npm run dev --workspace @zolana/wallet-example
 ```
 
-Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. `assets` installs the prover runtime and the 1x2, 2x2, 3x2, 1x4 and 2x4 transfer keys into `public/`, the shapes small wallets use; the page loads each key on first use. The page must be served with the cross-origin isolation headers in `vite.config.ts` for threaded proving.
+Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. `assets` installs the prover runtime and the 1x2, 2x2, 3x2, 1x4 and 2x4 transfer keys into `public/`, the shapes small wallets use; the page loads each key on first use. Any other shape is fetched from the pinned key CDN through the dev server, which also serves the full key manifest (see `vite.config.ts`), so every supported transfer shape proves. The page must be served with the cross-origin isolation headers in `vite.config.ts` for threaded proving.
 
 Without `VITE_SOLANA_RPC_URL` the page uses the public devnet RPC, which rate-limits confirmations. `VITE_INDEXER_URL` and `VITE_PROVER_URL` default to the devnet services; only the prover's non-proving routes are ever called.
 
