@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A devnet private wallet that proves every transaction in the browser.",
   "scripts": {
-    "assets": "zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key,transfer_confidential_3_2.key,transfer_confidential_1_4.key,transfer_confidential_2_4.key",
+    "assets": "zolana-prover-assets --output public --keys none",
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",

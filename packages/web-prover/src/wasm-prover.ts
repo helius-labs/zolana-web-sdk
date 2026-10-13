@@ -15,7 +15,7 @@ import { abortable } from "./abortable.js";
 import type { KeyProgress, Measurement } from "./measurement.js";
 import { operationError, WasmProverError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
-import { KEY_DIGESTS, KEY_SET } from "./key-digests.js";
+import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "./key-digests.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { proofRequestShape, proveRoute } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
@@ -60,8 +60,12 @@ export interface WasmProverOptions {
   readonly wasmUrl: string;
   /** Omit to choose automatically; zero selects the original Go prover. */
   readonly threads?: number;
-  /** Base URL proving keys are fetched from, e.g. the CloudFront prefix. */
-  readonly keyBaseUrl: string;
+  /**
+   * Where proving keys are fetched from. Omit it to use the pinned key set on
+   * the Zolana CDN, which serves them with CORS; set it to self-host or mirror
+   * them, as `zolana-prover-assets --keys` installs.
+   */
+  readonly keyBaseUrl?: string;
   /** The prover URL handed to the SDK; requests to it are intercepted. */
   readonly proverUrl: string;
   readonly fetch?: typeof globalThis.fetch;
@@ -254,7 +258,7 @@ export class WasmProver {
     const cache = await this.#openKeyCache(signal);
     if (expected === undefined || cache === undefined || this.#rawKeyFormat === undefined)
       return false;
-    const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/${shape.keyFile}`;
+    const url = this.#keyUrl(shape);
     const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
     return (
       hit?.headers.get(rawSourceHeader) === expected.sha256 &&
@@ -280,7 +284,7 @@ export class WasmProver {
       return;
     }
 
-    const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/${shape.keyFile}`;
+    const url = this.#keyUrl(shape);
     const expected = KEY_DIGESTS[shape.keyFile];
     if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
     const cache = await this.#openKeyCache(signal);
@@ -347,6 +351,10 @@ export class WasmProver {
       );
     this.#loaded.clear();
     this.#loaded.add(shape.keyFile);
+  }
+
+  #keyUrl(shape: ShapeKey): string {
+    return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${shape.keyFile}`;
   }
 
   /**

@@ -11,6 +11,8 @@ Breaking
 
 Added
 
+- `WasmProverOptions.keyBaseUrl` is optional and defaults to the pinned key set on the Zolana key CDN (`KEY_BASE_URL`), so an app installs no keys; set it to self-host them.
+- `zolana-prover-assets --keys none` installs the runtime without any key.
 - `prover.prefetch({ shapes, signal, onProgress })` downloads, checks and decodes keys before the proofs that need them, skipping shapes already cached.
 - `WasmProverOptions.onKeyProgress` reports each key's download bytes and decode stage for every load; `KeyProgress` is exported.
 - `WasmProverOptions.persistStorage` asks the browser to keep cached keys under storage pressure.
