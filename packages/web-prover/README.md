@@ -6,12 +6,12 @@ Local Groth16 proving and gnark verification in a browser worker. The core packa
 
 ```sh
 npm install @heliuslabs/zolana-web-prover
-npx --no-install zolana-prover-assets --output public
+npx --no-install zolana-prover-assets --output public --keys none
 ```
 
-The package contains the worker, the rebuilt Go Wasm bridge and its matching runtime shim. Proving keys and the threaded accelerator stay outside the core package. The asset command installs the bundled, sanitized Go bridge and sample request plus the pinned accelerator and 2-input/2-output key into your app's public directory. It checks the bundled bridge's manifest and verifies the release manifest's SHA-256 and size, then each downloaded file and key against the packaged lockfiles. It never installs the older Go bridge, shim or sample request from that release. It needs Node.js and network access, but no Go or Rust. Installation itself does not run downloads. For a local mirror, set `ZOLANA_RUNTIME_BASE_URL` and `ZOLANA_KEYS_BASE_URL` to `file:///.../` directories containing the release assets and keys respectively; the same digest checks apply.
+The package contains the worker, the rebuilt Go Wasm bridge and its matching runtime shim. Proving keys and the threaded accelerator stay outside the core package. Keys load on first use from the pinned key set on the Zolana key CDN, which serves them with CORS, and are checked against the size and SHA-256 bundled in the package, so an app installs none. The asset command installs the bundled, sanitized Go bridge and sample request plus the pinned accelerator into your app's public directory; without `--keys none` it also installs the 2-input/2-output key for self-hosting. It checks the bundled bridge's manifest and verifies the release manifest's SHA-256 and size, then each downloaded file and key against the packaged lockfiles. It never installs the older Go bridge, shim or sample request from that release. It needs Node.js and network access, but no Go or Rust. Installation itself does not run downloads. For a local mirror, set `ZOLANA_RUNTIME_BASE_URL` and `ZOLANA_KEYS_BASE_URL` to `file:///.../` directories containing the release assets and keys respectively; the same digest checks apply.
 
-Serve `public/prover`, `public/keys` and, for the demo, `public/fixtures` without flattening the accelerator's `snippets` directory. Serve `.wasm` as `application/wasm`, `.js` as JavaScript, and the document with:
+Serve `public/prover`, `public/keys` if you self-host keys, and, for the demo, `public/fixtures` without flattening the accelerator's `snippets` directory. Serve `.wasm` as `application/wasm`, `.js` as JavaScript, and the document with:
 
 ```text
 Cross-Origin-Opener-Policy: same-origin
@@ -27,7 +27,6 @@ import { ZolanaWebProver, WasmProverError } from "@heliuslabs/zolana-web-prover"
 
 const prover = new ZolanaWebProver({
   wasmUrl: new URL("/prover/zolana-prover.wasm", location.href).href,
-  keyBaseUrl: "/keys",
   proverUrl: "https://local-prover.invalid",
 });
 
@@ -43,9 +42,9 @@ try {
 
 `proveRequest` accepts the protocol's `/prove` JSON string and returns its proof JSON only after local verification. No transaction is built or sent. The bridge proves requests from `@heliuslabs/zolana` 0.4.0-alpha and reports each proof's `provingKeySha256`, which that SDK checks against its pinned keys. To connect it, pass `prover.createFetch()` as `fetch` and the same `proverUrl` to `createZolanaClient`, then prove through `LocalKeys.fromKeypair(keypair, client.proofService)`, or, for a browser wallet, `LocalKeys.fromDerivationSeed` with the wallet's signature over `ed25519DerivationMessage(publicKey)` (the repository's [wallet example](https://github.com/helius-labs/zolana-web-sdk/tree/main/examples/wallet) shows the whole flow). Requests to that URL's `/prove/<key>` endpoint, and to the bare `/prove` the Helius gateway routes to, are proved locally with the key the request names; a `<key>` that does not match the request body and any other path below `/prove` (such as `/prove/<key>/indexed`) get a 500 and are never forwarded. All other requests are delegated to the configured fetch implementation.
 
-## Select proving keys
+## Self-host proving keys
 
-Without `--keys`, the asset command installs only the demo's 2x2 key. Real transfer shapes may differ (for example, 1x2). Select all shapes your application's actual requests need:
+To serve keys yourself, for offline use, a mirror or your own CDN, install the shapes your application's requests need and pass their location as `keyBaseUrl` (for example `keyBaseUrl: "/keys"`). Without `--keys`, the asset command installs only the demo's 2x2 key; real transfer shapes may differ (for example, 1x2):
 
 ```sh
 npx --no-install zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key

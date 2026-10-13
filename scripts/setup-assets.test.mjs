@@ -169,6 +169,14 @@ test("explicit keys replace the demo default and install only the selected locke
   });
 });
 
+test("--keys none installs the runtime without any key", async (context) => {
+  const { output, run } = await fixture(context);
+  const result = run("--keys", "none");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(await readFile(join(output, "prover/zolana-prover.wasm"), "utf8"), "rebuilt sanitized bridge");
+  await assert.rejects(readFile(join(output, "keys/transfer_confidential_2_2.key")), { code: "ENOENT" });
+});
+
 test("unsupported, malformed and duplicate key selections fail before installing assets", async (context) => {
   const { output, run } = await fixture(context);
   for (const selection of [

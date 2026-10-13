@@ -3,6 +3,9 @@
 /** The pinned key set's version folder on the proving-keys CDN. */
 export const KEY_SET = "3a1c88f90f609eb1";
 
+/** Where the pinned key set is served from; the default `keyBaseUrl`. */
+export const KEY_BASE_URL = "https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/3a1c88f90f609eb1/";
+
 /** Size and sha256 of every proving key the browser prover can load. */
 export const KEY_DIGESTS: Readonly<Record<string, Readonly<{ size: number; sha256: string }>>> =
   Object.freeze({

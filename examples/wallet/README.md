@@ -5,7 +5,7 @@ A devnet private wallet where every zero-knowledge proof is made in the browser 
 The whole integration is in [`src/zolana.ts`](src/zolana.ts):
 
 ```ts
-const prover = new ZolanaWebProver({ wasmUrl: "/prover/zolana-prover.wasm", keyBaseUrl: "/keys", proverUrl });
+const prover = new ZolanaWebProver({ wasmUrl: "/prover/zolana-prover.wasm", proverUrl }); // keys come from the key CDN
 const client = await createZolanaClient({
   solanaRpcUrl, indexerUrl, proverUrl,
   proofDataSource: "client",
@@ -45,7 +45,7 @@ npm run assets --workspace @zolana/wallet-example
 VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<key>" npm run dev --workspace @zolana/wallet-example
 ```
 
-Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. `assets` installs the prover runtime and the 1x2, 2x2, 3x2, 1x4 and 2x4 transfer keys into `public/`, the shapes small wallets use; the page loads each key on first use. Any other shape is fetched from the pinned key CDN through the dev server, which also serves the full key manifest (see `vite.config.ts`), so every supported transfer shape proves. The page must be served with the cross-origin isolation headers in `vite.config.ts` for threaded proving.
+Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. `assets` installs the prover runtime into `public/`; proving keys load on first use from the Zolana key CDN, checked against the digests bundled in the prover, and the page prefetches the 1x2 and 2x2 keys once it connects. The page must be served with the cross-origin isolation headers in `vite.config.ts` for threaded proving.
 
 Without `VITE_SOLANA_RPC_URL` the page uses the public devnet RPC, which rate-limits confirmations. `VITE_INDEXER_URL` and `VITE_PROVER_URL` default to the devnet services; only the prover's non-proving routes are ever called.
 

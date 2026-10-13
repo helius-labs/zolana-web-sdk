@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZolanaWebProver } from "../src/index.js";
-import { KEY_SET } from "../src/key-digests.js";
+import { KEY_BASE_URL, KEY_SET } from "../src/key-digests.js";
 import {
   WasmProver,
   type WasmProverOptions,
@@ -830,6 +830,23 @@ describe("prefetch and key progress", () => {
       code: "wasm_key_digest_mismatch",
     });
     expect(loadedFiles()).toEqual([]);
+    prover.terminate();
+  });
+});
+
+describe("key source", () => {
+  it("fetches keys from the pinned CDN folder unless keyBaseUrl is set", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
+    const prover = new WasmProver({
+      wasmUrl: "/prover/test.wasm",
+      proverUrl: "http://localhost:3001",
+      fetch,
+    });
+    await prover.proveRequest(body);
+    expect(fetch.mock.calls.map(([input]) => String(input))).toEqual([
+      `${KEY_BASE_URL}transfer_confidential_2_2.key`,
+    ]);
+    expect(KEY_BASE_URL).toMatch(/^https:\/\/.+\/3a1c88f90f609eb1\/$/u);
     prover.terminate();
   });
 });
