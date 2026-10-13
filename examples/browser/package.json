@@ -16,7 +16,7 @@
   "dependencies": {
     "@heliuslabs/zolana": "0.4.0-alpha",
     "@solana/kit": "^8.3.0",
-    "@heliuslabs/zolana-web-prover": "^0.1.0-alpha",
+    "@heliuslabs/zolana-web-prover": "^0.2.0-alpha",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
