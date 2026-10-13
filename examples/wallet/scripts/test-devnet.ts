@@ -1,5 +1,5 @@
 // Drives the example in Chrome against devnet: a fresh key registers, shields,
-// sends privately and unshields, and every proof must be made in the page.
+// sends privately, sends with an app fee and unshields, and every proof must be made in the page.
 //
 //   ZOLANA_E2E_FUNDER=~/.config/solana/id.json \
 //   VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=$API_KEY" npm run test:devnet
@@ -122,11 +122,16 @@ try {
   await act(driver, "shield", "Shield");
   const sent = await act(driver, "send", "Send");
   assert.ok((await sent.findElements(byTestId("local-proof"))).length > 0, "the transfer was not proved in the page");
+  // One transfer and one proof pay the recipient and the app fee, both this wallet here.
+  await (await driver.findElement(byTestId("send-fee"))).sendKeys("0.001");
+  const withFee = await act(driver, "send", "Send with fee");
+  assert.match(await withFee.getText(), /with a 0\.001 SOL fee/u);
+  assert.ok((await withFee.findElements(byTestId("local-proof"))).length > 0, "the fee transfer was not proved in the page");
   const unshielded = await act(driver, "unshield", "Unshield");
   assert.ok((await unshielded.findElements(byTestId("local-proof"))).length > 0, "the withdrawal was not proved in the page");
   console.log(`private balance ${await driver.findElement(byTestId("private-balance")).getText()}`);
   console.log(`history: ${(await driver.findElement(byTestId("history")).getText()).replaceAll("\n", " | ")}`);
-  console.log("PASS: register, shield, private send and unshield on devnet, every proof made in the page");
+  console.log("PASS: register, shield, private send, send with fee and unshield on devnet, every proof made in the page");
 } catch (error) {
   console.error(redact(error instanceof Error ? (error.stack ?? error.message) : String(error)));
   await dumpPage(driver);
