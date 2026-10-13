@@ -26,6 +26,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/consensys/gnark/backend/groth16"
@@ -124,18 +125,25 @@ func circuitTypeForKeyFile(name string) (common.CircuitType, error) {
 	}
 }
 
-// loadKey deserializes one proving key pushed in from JS.
+// loadKey deserializes one proving key pushed in from JS, either the pinned
+// file or the raw form a previous exportRaw returned.
 //
-// Signature: loadKey(fileName: string, key: Uint8Array) -> { key, circuitType,
-// nInputs, nOutputs } | { error }.
+// Signature: loadKey(fileName: string, key: Uint8Array, sha256: string,
+// exportRaw: boolean) -> { key, circuitType, nInputs, nOutputs, raw? } | { error }.
+// sha256 is the pinned file's digest, which JS has checked the bytes (or the
+// bytes the raw form was derived from) against.
 func (r *registry) loadKey(args []js.Value) any {
-	if len(args) != 2 {
-		return errorResult(fmt.Errorf("loadKey expects (fileName, Uint8Array), got %d args", len(args)))
+	if len(args) != 4 {
+		return errorResult(fmt.Errorf("loadKey expects (fileName, Uint8Array, sha256, exportRaw), got %d args", len(args)))
 	}
 	name := args[0].String()
 	circuitType, err := circuitTypeForKeyFile(name)
 	if err != nil {
 		return errorResult(err)
+	}
+	digest, err := hex.DecodeString(args[2].String())
+	if err != nil || len(digest) != sha256.Size {
+		return errorResult(fmt.Errorf("loadKey expects a hex sha256 digest"))
 	}
 
 	raw := make([]byte, args[1].Get("byteLength").Int())
@@ -149,7 +157,7 @@ func (r *registry) loadKey(args []js.Value) any {
 	}
 	// Proofs report this digest so clients can match it to the proving key
 	// pinned next to their verifying key, as common.ReadSystemFromFile does.
-	ps.ProvingKeySha256 = sha256.Sum256(raw)
+	ps.ProvingKeySha256 = [sha256.Size]byte(digest)
 	ps.CircuitType = circuitType
 	ps.Confidential = circuitType != common.TransferRingAuthorityCircuitType
 
@@ -160,7 +168,7 @@ func (r *registry) loadKey(args []js.Value) any {
 	// witness against, and a mismatch is reported as two bare totals. Surfacing it
 	// at load time distinguishes a bad request from a key whose circuit does not
 	// match this binary.
-	return map[string]any{
+	result := map[string]any{
 		"key":         key,
 		"circuitType": string(circuitType),
 		"nInputs":     int(ps.NInputs),
@@ -171,6 +179,16 @@ func (r *registry) loadKey(args []js.Value) any {
 		"accelerated": r.prepared[key].kernel != nil,
 		"fileName":    name,
 	}
+	if args[3].Bool() {
+		encoded, err := rawKey(ps)
+		if err != nil {
+			return errorResult(err)
+		}
+		out := js.Global().Get("Uint8Array").New(len(encoded))
+		js.CopyBytesToJS(out, encoded)
+		result["raw"] = out
+	}
+	return result
 }
 
 // prove mirrors server.processProofSync for the circuits a wallet needs. The
@@ -321,6 +339,7 @@ func main() {
 	api.Set("loadKey", guard(keys.loadKey))
 	api.Set("prove", guard(keys.prove))
 	api.Set("verify", guard(keys.verify))
+	api.Set("rawKeyFormat", rawKeyFormat)
 	api.Set("loadedKeys", guard(func([]js.Value) any {
 		loaded := keys.keys()
 		out := make([]any, len(loaded))

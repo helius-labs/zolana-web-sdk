@@ -50,7 +50,7 @@ function workerMain() {
       const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', key))].map(b => b.toString(16).padStart(2, '0')).join('');
       if (key.length !== manifest[file].size || digest !== manifest[file].sha256) throw new Error('Key digest mismatch');
       const request = await (await fetch(base + '/fixtures/transfer-2x2.json')).text();
-      const prepare = unwrap(api.loadKey(file, key));
+      const prepare = unwrap(api.loadKey(file, key, manifest[file].sha256, false));
       const warmups = [], samples = [];
       for (let i = 0; i < 18; i++) {
         phases = {};

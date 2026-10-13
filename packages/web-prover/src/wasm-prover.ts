@@ -22,7 +22,16 @@ import { type ShapeKey } from "./shapes.js";
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
 export type WorkerRequest =
   | Readonly<{ id: number; kind: "init"; wasmUrl: string; threads: number }>
-  | Readonly<{ id: number; kind: "loadKey"; fileName: string; key: ArrayBuffer }>
+  | Readonly<{
+      id: number;
+      kind: "loadKey";
+      fileName: string;
+      key: ArrayBuffer;
+      /** The pinned key file's sha256, which proofs report. */
+      sha256: string;
+      /** Ask for the raw re-encoding back, to cache. */
+      exportRaw: boolean;
+    }>
   | Readonly<{ id: number; kind: "prove"; body: string }>
   | Readonly<{ id: number; kind: "loadedKeys" }>
   | Readonly<{ id: number; kind: "verify"; body: string; proof: string }>;
@@ -64,9 +73,12 @@ export interface WasmProverOptions {
 /**
  * Owns the worker, the key cache, and the `fetch` shim.
  *
- * Proving keys are cached in the Cache API rather than memory: they are 8-37 MB
+ * Proving keys are cached in the Cache API rather than memory: they are 9-380 MB
  * each and immutable (the lockfile pins their sha256 and the CloudFront prefix
- * is version-hashed), so re-downloading one per page load is pure waste.
+ * is version-hashed), so re-downloading one per page load is pure waste. After
+ * a shape's first load the cache keeps the bridge's raw re-encoding instead of
+ * the pinned file: the pinned file's compressed points take about 240 ms per MB
+ * to decompress in wasm on every load, and the raw form skips that.
  */
 export class WasmProver {
   #worker: Worker | undefined;
@@ -74,6 +86,7 @@ export class WasmProver {
   #initialization: Promise<void> | undefined;
   #lifetime = new AbortController();
   #manifest: ReadonlyMap<string, KeyDigest> | undefined;
+  #rawKeyFormat: string | undefined;
   #nextId = 1;
   #queue: Promise<unknown> = Promise.resolve();
   #threads = 0;
@@ -172,6 +185,10 @@ export class WasmProver {
           throw new WasmProverError("wasm_invalid_response");
         }
         this.#threads = value.threads;
+        this.#rawKeyFormat =
+          "rawKeyFormat" in value && typeof value.rawKeyFormat === "string"
+            ? value.rawKeyFormat
+            : undefined;
       })
       .catch((error: unknown) => {
         if (this.#worker === worker || this.#initialization === initialization) this.#fail(error);
@@ -213,22 +230,38 @@ export class WasmProver {
     }
 
     const url = `${this.#options.keyBaseUrl.replace(/\/+$/u, "")}/${shape.keyFile}`;
+    const expected = (await this.#keyManifest(signal)).get(shape.keyFile);
+    if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
+    const cache = await optionalCache(() => globalThis.caches?.open(keyCacheName), signal);
     const started = performance.now();
-    const key = await this.#fetchKey(url, shape, signal);
+    let key =
+      (await this.#cachedRawKey(cache, url, expected, signal)) ??
+      (await this.#pinnedKey(cache, url, expected, signal));
     signal.throwIfAborted();
     this.#options.onMeasurement?.({
       step: "key-fetch",
       ms: performance.now() - started,
-      bytes: key.byteLength,
-      note: shape.keyFile,
+      bytes: key.bytes.byteLength,
+      note: `${shape.keyFile} from ${key.raw ? "the raw-key cache" : key.source}`,
     });
     signal.throwIfAborted();
 
     this.#loaded.clear();
-    const response = await this.#call({ kind: "loadKey", fileName: shape.keyFile, key }, [key]);
+    let response: WorkerResponse;
+    try {
+      response = await this.#installKey(shape, key, expected, cache);
+    } catch (error) {
+      if (!key.raw) throw error;
+      // A raw entry the bridge no longer accepts is rebuilt from the pinned key.
+      signal.throwIfAborted();
+      await optionalCache(() => cache?.delete(rawKeyUrl(url)), signal);
+      key = await this.#pinnedKey(cache, url, expected, signal);
+      signal.throwIfAborted();
+      response = await this.#installKey(shape, key, expected, cache);
+    }
     signal.throwIfAborted();
     const info = response.value as
-      | Readonly<{ key?: string; nbPublic?: number; nbSecret?: number }>
+      | Readonly<{ key?: string; nbPublic?: number; nbSecret?: number; raw?: unknown }>
       | undefined;
     this.#options.onMeasurement?.({
       step: "key-load",
@@ -242,8 +275,36 @@ export class WasmProver {
           : `${shape.keyFile} as ${String(info.key)} nbPublic=${String(info.nbPublic)} nbSecret=${String(info.nbSecret)}`,
     });
     signal.throwIfAborted();
+    const raw = info?.raw;
+    if (cache !== undefined && raw instanceof Uint8Array && raw.buffer instanceof ArrayBuffer)
+      await this.#storeRawKey(
+        cache,
+        url,
+        expected,
+        new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength),
+        signal,
+      );
     this.#loaded.clear();
     this.#loaded.add(shape.keyFile);
+  }
+
+  #installKey(
+    shape: ShapeKey,
+    key: KeyBytes,
+    expected: KeyDigest,
+    cache: Cache | undefined,
+  ): Promise<WorkerResponse> {
+    const exportRaw = !key.raw && cache !== undefined && this.#rawKeyFormat !== undefined;
+    return this.#call(
+      {
+        kind: "loadKey",
+        fileName: shape.keyFile,
+        key: key.bytes,
+        sha256: expected.sha256,
+        exportRaw,
+      },
+      [key.bytes],
+    );
   }
 
   /**
@@ -279,21 +340,47 @@ export class WasmProver {
     return this.#manifest;
   }
 
-  async #fetchKey(url: string, shape: ShapeKey, signal: AbortSignal): Promise<ArrayBuffer> {
-    const manifest = await this.#keyManifest(signal);
-    const expected = manifest.get(shape.keyFile);
-    if (expected === undefined) {
-      throw new WasmProverError("wasm_key_manifest_error");
+  /**
+   * The raw re-encoding cached by an earlier load, if it was derived from this
+   * pinned key by a bridge writing the same format and is intact.
+   */
+  async #cachedRawKey(
+    cache: Cache | undefined,
+    url: string,
+    expected: KeyDigest,
+    signal: AbortSignal,
+  ): Promise<KeyBytes | undefined> {
+    const format = this.#rawKeyFormat;
+    if (cache === undefined || format === undefined) return undefined;
+    const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
+    if (hit === undefined) return undefined;
+    const digest = hit.headers.get(rawDigestHeader);
+    if (
+      hit.headers.get(rawSourceHeader) === expected.sha256 &&
+      hit.headers.get(rawFormatHeader) === format &&
+      digest !== null
+    ) {
+      const bytes = await optionalCache(() => hit.arrayBuffer(), signal);
+      if (bytes !== undefined && (await abortable(sha256Hex(bytes), signal)) === digest)
+        return { bytes, raw: true, source: "cache" };
     }
+    // Derived from another key set or by another bridge, or damaged.
+    await optionalCache(() => cache.delete(rawKeyUrl(url)), signal);
+    return undefined;
+  }
 
-    const cacheName = "zolana-proving-keys";
-    const cache = await optionalCache(() => globalThis.caches?.open(cacheName), signal);
+  async #pinnedKey(
+    cache: Cache | undefined,
+    url: string,
+    expected: KeyDigest,
+    signal: AbortSignal,
+  ): Promise<KeyBytes> {
     if (cache !== undefined) {
       const hit = await optionalCache(() => cache.match(url), signal);
       if (hit !== undefined) {
         const cached = await optionalCache(() => hit.arrayBuffer(), signal);
         if (cached !== undefined && (await abortable(matchesDigest(cached, expected), signal)))
-          return cached;
+          return { bytes: cached, raw: false, source: "cache" };
         // Written before a rotation: same shape, different circuit. Evict rather
         // than prove against it.
         await optionalCache(() => cache.delete(url), signal);
@@ -310,7 +397,31 @@ export class WasmProver {
     }
     if (cache !== undefined)
       await optionalCache(() => cache.put(url, new Response(bytes.slice(0))), signal);
-    return bytes;
+    return { bytes, raw: false, source: "network" };
+  }
+
+  /** Keeps the raw form in place of the pinned file, which is no longer read. */
+  async #storeRawKey(
+    cache: Cache,
+    url: string,
+    expected: KeyDigest,
+    raw: Uint8Array<ArrayBuffer>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const format = this.#rawKeyFormat;
+    if (format === undefined) return;
+    const digest = await abortable(sha256Hex(raw), signal);
+    const headers = {
+      "content-type": "application/octet-stream",
+      [rawSourceHeader]: expected.sha256,
+      [rawFormatHeader]: format,
+      [rawDigestHeader]: digest,
+    };
+    const stored = await optionalCache(async () => {
+      await cache.put(rawKeyUrl(url), new Response(raw, { headers }));
+      return true;
+    }, signal);
+    if (stored === true) await optionalCache(() => cache.delete(url), signal);
   }
 
   /**
@@ -471,13 +582,25 @@ async function readBody(input: RequestInfo | URL, init?: RequestInit): Promise<s
   return undefined;
 }
 
+const keyCacheName = "zolana-proving-keys";
+const rawSourceHeader = "x-zolana-pinned-sha256";
+const rawFormatHeader = "x-zolana-raw-format";
+const rawDigestHeader = "x-zolana-raw-sha256";
+
+/** The Cache API ignores fragments, so the raw entry gets its own query. */
+function rawKeyUrl(url: string): string {
+  return `${url}?zolana-key=raw`;
+}
+
+type KeyBytes = Readonly<{ bytes: ArrayBuffer; raw: boolean; source: "cache" | "network" }>;
+
 /** One entry of `keys/manifest.json`, copied from `proving-keys.lock`. */
 export interface KeyDigest {
   readonly size: number;
   readonly sha256: string;
 }
 
-async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+async function sha256Hex(bytes: BufferSource): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

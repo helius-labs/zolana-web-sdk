@@ -13,12 +13,15 @@ const body = JSON.stringify({ circuitType: "transfer-confidential", nInputs: 2, 
 const proveBase = "http://localhost:3001/prove";
 const endpoint = `${proveBase}/transfer_confidential_2_2`;
 const key = new Uint8Array([1, 2, 3]);
+const rawKey = new Uint8Array([7, 7, 7, 7]);
 const factory = () => new Worker("test-worker");
 
 class TestWorker extends EventTarget {
   static instances: TestWorker[] = [];
   static holdInit = false;
   static throwOnPost = false;
+  static rawKeyFormat: string | undefined;
+  static rejectRaw = false;
   readonly requests: WorkerRequest[] = [];
   terminated = false;
   hold: WorkerRequest["kind"] | undefined;
@@ -36,10 +39,14 @@ class TestWorker extends EventTarget {
     let value: unknown;
     switch (request.kind) {
       case "init":
-        value = { threads: 2 };
+        value = { threads: 2, rawKeyFormat: TestWorker.rawKeyFormat };
         break;
       case "loadKey":
-        value = { key: request.fileName };
+        if (TestWorker.rejectRaw && bytesEqual(request.key, rawKey)) {
+          this.message({ id: request.id, ok: false, error: "wasm_key_load_failed", ms: 1 });
+          return;
+        }
+        value = { key: request.fileName, raw: request.exportRaw ? rawKey.slice() : undefined };
         break;
       case "prove":
         value = '{"proof":"test"}';
@@ -64,6 +71,10 @@ class TestWorker extends EventTarget {
   terminate(): void {
     this.terminated = true;
   }
+}
+function bytesEqual(buffer: ArrayBuffer, expected: Uint8Array): boolean {
+  const bytes = new Uint8Array(buffer);
+  return bytes.length === expected.length && bytes.every((byte, i) => byte === expected[i]);
 }
 function current(): TestWorker {
   const worker = TestWorker.instances.at(-1);
@@ -111,6 +122,8 @@ beforeEach(() => {
   TestWorker.instances = [];
   TestWorker.holdInit = false;
   TestWorker.throwOnPost = false;
+  TestWorker.rawKeyFormat = undefined;
+  TestWorker.rejectRaw = false;
   vi.stubGlobal("Worker", TestWorker);
   vi.stubGlobal("caches", undefined);
 });
@@ -554,5 +567,122 @@ describe("best-effort proving-key cache", () => {
     expect(fetch).toHaveBeenCalledTimes(source === "cached" ? 1 : 2);
     expect(current().requests.some((request) => request.kind === "loadKey")).toBe(false);
     prover.terminate();
+  });
+});
+
+describe("raw proving-key cache", () => {
+  const pinnedUrl = "/keys/transfer_confidential_2_2.key";
+  const rawUrl = `${pinnedUrl}?zolana-key=raw`;
+
+  function memoryCache() {
+    const entries = new Map<string, Response>();
+    const cache = {
+      entries,
+      match: vi.fn(async (url: string) => entries.get(url)?.clone()),
+      put: vi.fn(async (url: string, response: Response) => {
+        entries.set(url, response);
+      }),
+      delete: vi.fn(async (url: string) => entries.delete(url)),
+    };
+    vi.stubGlobal("caches", { open: vi.fn(async () => cache) });
+    return cache;
+  }
+  async function hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  function loadKeyRequest(index = 0): Extract<WorkerRequest, { kind: "loadKey" }> {
+    const found = current().requests.filter((value) => value.kind === "loadKey")[index];
+    if (found === undefined) throw new Error("missing loadKey");
+    return found as Extract<WorkerRequest, { kind: "loadKey" }>;
+  }
+  const keyDownloads = (fetch: ReturnType<typeof vi.fn>) =>
+    fetch.mock.calls.filter(([input]) => String(input).endsWith(".key")).length;
+
+  beforeEach(() => {
+    TestWorker.rawKeyFormat = "raw-test";
+  });
+
+  it("keeps the bridge's raw key in place of the pinned file and loads it next time", async () => {
+    const cache = memoryCache();
+    const first = await fixture();
+    await first.prover.proveRequest(body);
+    const pinned = loadKeyRequest();
+    expect(pinned).toMatchObject({ sha256: await hex(key), exportRaw: true });
+    expect(new Uint8Array(pinned.key)).toEqual(key);
+    expect([...cache.entries.keys()]).toEqual([rawUrl]);
+    const stored = cache.entries.get(rawUrl)!;
+    expect(stored.headers.get("x-zolana-pinned-sha256")).toBe(await hex(key));
+    expect(stored.headers.get("x-zolana-raw-format")).toBe("raw-test");
+    expect(stored.headers.get("x-zolana-raw-sha256")).toBe(await hex(rawKey));
+    first.prover.terminate();
+
+    const steps: Measurement[] = [];
+    const second = await fixture((step) => steps.push(step));
+    await second.prover.proveRequest(body);
+    expect(keyDownloads(second.fetch)).toBe(0);
+    const raw = loadKeyRequest();
+    expect(raw).toMatchObject({ sha256: await hex(key), exportRaw: false });
+    expect(new Uint8Array(raw.key)).toEqual(rawKey);
+    expect(steps.find((step) => step.step === "key-fetch")?.note).toContain("raw-key cache");
+    second.prover.terminate();
+  });
+
+  it.each(["pinned key", "format", "digest"] as const)(
+    "rebuilds a raw entry with a different %s from the pinned key",
+    async (mismatch) => {
+      const cache = memoryCache();
+      cache.entries.set(
+        rawUrl,
+        new Response(rawKey, {
+          headers: {
+            "x-zolana-pinned-sha256": mismatch === "pinned key" ? "0".repeat(64) : await hex(key),
+            "x-zolana-raw-format": mismatch === "format" ? "raw-older" : "raw-test",
+            "x-zolana-raw-sha256": mismatch === "digest" ? "0".repeat(64) : await hex(rawKey),
+          },
+        }),
+      );
+      const { prover, fetch } = await fixture();
+      await prover.proveRequest(body);
+      expect(keyDownloads(fetch)).toBe(1);
+      expect(loadKeyRequest()).toMatchObject({ exportRaw: true });
+      expect(new Uint8Array(loadKeyRequest().key)).toEqual(key);
+      expect(cache.entries.get(rawUrl)?.headers.get("x-zolana-raw-format")).toBe("raw-test");
+      expect(cache.entries.get(rawUrl)?.headers.get("x-zolana-pinned-sha256")).toBe(
+        await hex(key),
+      );
+      prover.terminate();
+    },
+  );
+
+  it("falls back to the pinned key when the bridge rejects a cached raw key", async () => {
+    const cache = memoryCache();
+    const seed = await fixture();
+    await seed.prover.proveRequest(body);
+    seed.prover.terminate();
+    TestWorker.rejectRaw = true;
+
+    const { prover, fetch } = await fixture();
+    await expect(prover.proveRequest(body)).resolves.toHaveProperty("proof");
+    expect(new Uint8Array(loadKeyRequest(0).key)).toEqual(rawKey);
+    expect(new Uint8Array(loadKeyRequest(1).key)).toEqual(key);
+    expect(loadKeyRequest(1).exportRaw).toBe(true);
+    expect(keyDownloads(fetch)).toBe(1);
+    expect(cache.entries.has(rawUrl)).toBe(true);
+    prover.terminate();
+  });
+
+  it("does not ask for a raw key without a cache or from a bridge that has none", async () => {
+    const { prover } = await fixture();
+    await prover.proveRequest(body);
+    expect(loadKeyRequest().exportRaw).toBe(false);
+    prover.terminate();
+
+    memoryCache();
+    TestWorker.rawKeyFormat = undefined;
+    const older = await fixture();
+    await older.prover.proveRequest(body);
+    expect(loadKeyRequest().exportRaw).toBe(false);
+    older.prover.terminate();
   });
 });

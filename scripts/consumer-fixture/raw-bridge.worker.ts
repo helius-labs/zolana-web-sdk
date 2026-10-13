@@ -7,7 +7,7 @@ const runtime = globalThis as unknown as {
   __zolanaProver: {
     prove(body: string): unknown;
     verify(body: string, proof: string): unknown;
-    loadKey(name: string, bytes: unknown): unknown;
+    loadKey(name: string, bytes: unknown, sha256: string, exportRaw: boolean): unknown;
   };
 };
 
@@ -30,7 +30,7 @@ globalThis.addEventListener("message", async (event: MessageEvent<string>) => {
       api.prove(event.data),
       api.verify(event.data, "{}"),
       api.prove('{"circuitType":"review-private-sentinel"}'),
-      api.loadKey("transfer_confidential_2_2.key", "review-private-sentinel"),
+      api.loadKey("transfer_confidential_2_2.key", "review-private-sentinel", "00".repeat(32), false),
     ];
     globalThis.postMessage({ failures });
   } catch {

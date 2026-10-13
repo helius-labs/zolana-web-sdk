@@ -23,10 +23,12 @@ import { operationError, WasmProverError } from "./errors.js";
 
 /** The API `wasm/prover-wasm` installs on `globalThis`. */
 interface ZolanaProverApi {
-  loadKey(fileName: string, key: Uint8Array): unknown;
+  loadKey(fileName: string, key: Uint8Array, sha256?: string, exportRaw?: boolean): unknown;
   prove(requestJson: string): unknown;
   loadedKeys(): unknown;
   verify(requestJson: string, proofJson: string): unknown;
+  /** Absent from bridges that cannot load or export a raw key. */
+  rawKeyFormat?: string;
 }
 
 declare const __zolanaProver: ZolanaProverApi | undefined;
@@ -115,9 +117,18 @@ async function handle(request: WorkerRequest): Promise<unknown> {
   switch (request.kind) {
     case "init":
       await init(request.wasmUrl, request.threads);
-      return { initialized: true, threads: activeThreads };
-    case "loadKey":
-      return unwrap(requireApi().loadKey(request.fileName, new Uint8Array(request.key)));
+      return { initialized: true, threads: activeThreads, rawKeyFormat: requireApi().rawKeyFormat };
+    case "loadKey": {
+      const bridge = requireApi();
+      const key = new Uint8Array(request.key);
+      // A bridge installed before raw keys takes (fileName, key) and hashes the key
+      // itself; the page never asks it for a raw key.
+      return unwrap(
+        bridge.rawKeyFormat === undefined
+          ? bridge.loadKey(request.fileName, key)
+          : bridge.loadKey(request.fileName, key, request.sha256, request.exportRaw),
+      );
+    }
     case "prove": {
       const result = unwrap(requireApi().prove(request.body)) as { proof?: unknown };
       // The page rebuilds an HTTP response from this, so hand back the exact
@@ -145,7 +156,9 @@ self.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
           value,
           ms: performance.now() - started,
         };
-        self.postMessage(response);
+        // A raw key is tens of megabytes; move it rather than copy it.
+        const raw = (value as { raw?: unknown } | undefined)?.raw;
+        self.postMessage(response, raw instanceof Uint8Array ? [raw.buffer] : []);
       },
       () => {
         const response: WorkerResponse = {

@@ -6,6 +6,7 @@ vi.mock("../src/vendor/wasm_exec.js", () => ({}));
 const sentinel = "review-private-sentinel";
 let scope: EventTarget & { postMessage: ReturnType<typeof vi.fn> };
 let backend: Record<"prove" | "verify" | "loadKey" | "loadedKeys", ReturnType<typeof vi.fn>>;
+let initialized: WorkerResponse;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -17,7 +18,7 @@ beforeEach(async () => {
     loadedKeys: vi.fn(() => ({ keys: [] })),
   };
   vi.stubGlobal("self", scope);
-  vi.stubGlobal("__zolanaProver", backend);
+  vi.stubGlobal("__zolanaProver", { ...backend, rawKeyFormat: "raw-test" });
   vi.stubGlobal("__zolanaProverReady", undefined);
   vi.stubGlobal(
     "Go",
@@ -37,8 +38,8 @@ beforeEach(async () => {
     {} as WebAssembly.WebAssemblyInstantiatedSource,
   );
   await import("../src/prover.worker.js");
-  const response = await send({ id: 1, kind: "init", threads: 0, wasmUrl: "/test.wasm" });
-  expect(response.ok).toBe(true);
+  initialized = await send({ id: 1, kind: "init", threads: 0, wasmUrl: "/test.wasm" });
+  expect(initialized.ok).toBe(true);
 });
 
 afterEach(() => {
@@ -76,3 +77,41 @@ it.each(["prove", "verify", "loadKey", "loadedKeys"] as const)(
     }
   },
 );
+
+it("reports the bridge's raw key format and moves a raw key back to the page", async () => {
+  expect(initialized.value).toMatchObject({ rawKeyFormat: "raw-test" });
+  const raw = new Uint8Array([7, 7, 7]);
+  backend.loadKey.mockReturnValue({ key: "transfer_2_2", raw });
+  const response = await send({
+    id: 2,
+    kind: "loadKey",
+    fileName: "transfer_confidential_2_2.key",
+    key: new Uint8Array([1, 2, 3]).buffer,
+    sha256: "ab".repeat(32),
+    exportRaw: true,
+  });
+  expect(response.ok).toBe(true);
+  const [fileName, key, sha256, exportRaw] = backend.loadKey.mock.calls[0]!;
+  expect([fileName, new Uint8Array(key), sha256, exportRaw]).toEqual([
+    "transfer_confidential_2_2.key",
+    new Uint8Array([1, 2, 3]),
+    "ab".repeat(32),
+    true,
+  ]);
+  expect(scope.postMessage.mock.calls[0]![1]).toEqual([raw.buffer]);
+});
+
+it("loads keys into a bridge from before raw keys with its two-argument call", async () => {
+  delete (globalThis as unknown as { __zolanaProver: { rawKeyFormat?: string } }).__zolanaProver
+    .rawKeyFormat;
+  const response = await send({
+    id: 2,
+    kind: "loadKey",
+    fileName: "transfer_confidential_2_2.key",
+    key: new Uint8Array([1, 2, 3]).buffer,
+    sha256: "ab".repeat(32),
+    exportRaw: false,
+  });
+  expect(response.ok).toBe(true);
+  expect(backend.loadKey.mock.calls[0]).toHaveLength(2);
+});
