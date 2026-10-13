@@ -30,7 +30,7 @@ const data = await client.proveTransact(prepared.finalize(encrypted), keys);
 const instruction = await getTransactInstructionAsync({ payer, inputTree, outputTree, data });
 ```
 
-The SDK's builders check the proved transfer against the intent the user approved; this path has none, so it checks the prepared outputs against the payments itself. Two or three payments and the change take a 4-output proof, which spends at most 24 notes.
+The SDK's builders check the proved transfer against the intent the user approved; this path has none, so it checks the prepared outputs against the payments itself. Two or three payments and the change take a 4-output proof, which spends at most 24 UTXOs.
 
 ## Run
 

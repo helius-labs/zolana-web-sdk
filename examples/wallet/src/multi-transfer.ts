@@ -36,10 +36,10 @@ export interface Payment {
 
 /**
  * Up to three payments and the change fit a 4-output proof, which takes at
- * most 24 notes.
+ * most 24 UTXOs.
  */
 const MAX_PAYMENTS = 3;
-const MAX_NOTES = 24;
+const MAX_INPUTS = 24;
 /** The SDK client's defaults for a transact. */
 const COMPUTE_UNIT_LIMIT = 450_000;
 const LOADED_ACCOUNTS_DATA_SIZE_LIMIT = 64 * 1024 * 1024;
@@ -62,7 +62,7 @@ export async function buildPaymentsTransaction(
 
   const owner = keys.address();
   const total = resolved.reduce((sum, payment) => sum + payment.amount, 0n);
-  const inputs = selectNotes(wallet, client.tree, total).map(
+  const inputs = selectUtxos(wallet, client.tree, total).map(
     (entry) =>
       new ProofInputUtxo({
         utxo: entry.utxo,
@@ -120,8 +120,8 @@ export async function buildPaymentsTransaction(
   );
 }
 
-/** Plain SOL notes in the client's tree, largest first, until they cover `amount`. */
-function selectNotes(wallet: Wallet, tree: Address, amount: bigint): WalletUtxo[] {
+/** Plain SOL UTXOs in the client's tree, largest first, until they cover `amount`. */
+function selectUtxos(wallet: Wallet, tree: Address, amount: bigint): WalletUtxo[] {
   const candidates = wallet
     .utxos()
     .filter(
@@ -143,7 +143,7 @@ function selectNotes(wallet: Wallet, tree: Address, amount: bigint): WalletUtxo[
     covered += entry.utxo.amount;
   }
   if (covered < amount) throw new Error("Not enough private SOL");
-  if (selected.length > MAX_NOTES) throw new Error(`Needs more than ${MAX_NOTES} notes; merge first`);
+  if (selected.length > MAX_INPUTS) throw new Error(`Needs more than ${MAX_INPUTS} UTXOs; merge first`);
   return selected;
 }
 
