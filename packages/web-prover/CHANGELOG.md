@@ -18,6 +18,8 @@ Added
 - `WasmProverOptions.persistStorage` asks the browser to keep cached keys under storage pressure.
 - `zolana-prover-assets --keys` accepts every pinned merge key (`merge_8_1`, `merge_24_1`, `merge_54_1`).
 
+- The repository's proof timing harness (`examples/browser/scripts/proof-timing.mjs`, `scripts/proof-timing-report.mjs`) times transfers of 1 to 24 notes and a merge of 24 through the benchmark page in headless Chrome, in the four scenarios the mobile SDK reports; CI comments the report on every pull request and keeps the history of `main` on the `proof-timing` branch.
+
 Changed
 
 - A key's first load decompresses its points on the kernel's thread pool when the runtime provides `decompress_g1` and `decompress_g2` (runtime 0.2.0): the Go bridge rewrites the compressed proving key to gnark's raw form through them and decodes that, which is also what the raw-key cache then holds. An older runtime loads as before.

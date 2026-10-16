@@ -46,6 +46,19 @@ npm run test:e2e
 
 The funder tops up two fresh wallets with 0.06 devnet SOL and receives the remainder back. Use a keyed RPC; the public devnet endpoint rate-limits confirmation polling.
 
+### Proof timing
+
+The same table the mobile SDK reports, from the browser: `examples/browser/scripts/proof-timing.mjs` drives the benchmark page in headless Chrome through four scenarios per shape (first run including the key's fetch and decode, warm, first run after a page reload with the key in the raw-key cache, repeated) and prints one `ZOLANA_TIMING {json}` line per proof; `scripts/proof-timing-report.mjs` turns the lines into the report, with the change against a baseline. The shapes are transfers of 1, 2, 4, 8, 16 and 24 notes to two outputs (`1x2` to `24x2`) and a merge of 24 notes (`merge-24x1`); a shape that fails shows as failed and the others still run.
+
+CI benches every shape on every pull request, in a job beside the checks, and comments the report with the change against the last commit of `main`. After each push to `main` the report is commented on the commit, against the commit before it, and joins the history on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch, a table of the last commits. Those numbers say whether a change made proving faster or slower on a runner; what a device takes comes from the same harness on that device.
+
+```sh
+ZOLANA_TIMING_SHAPES=1x2,8x2 ZOLANA_TIMING_DIR=/tmp/timing node examples/browser/scripts/proof-timing.mjs
+node scripts/proof-timing-report.mjs --logs /tmp/timing
+```
+
+The requests are `wasm/prover-wasm/testdata/transfer-*.json` and `merge-*.json`, valid witnesses on trees of their own (the mobile SDK's `tools/prove-fixtures` wrote them). Keys load from where the page loads them, so set `VITE_ZOLANA_KEYS_URL` to the key CDN for shapes not staged under `public/keys`. `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per shape and run; `ZOLANA_TIMING_THREADS=4` sizes the kernel's pool as on a phone.
+
 ## Runtime releases
 
 The accelerator runtime is built by maintainers and published as a versioned GitHub release. `runtime.lock.json` pins the release manifest by SHA-256, while the manifest pins every downloaded runtime file. The Go bridge and matching shim are rebuilt from this repository for each SDK build and bundled in the npm artifact; setup ignores their older release copies. Proving keys are fetched from their immutable CloudFront prefix and checked against `wasm/prover/provingkeys/proving-keys.lock`.
