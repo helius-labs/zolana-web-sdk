@@ -18,6 +18,8 @@ Added
 - `WasmProverOptions.persistStorage` asks the browser to keep cached keys under storage pressure.
 - `zolana-prover-assets --keys` accepts every pinned merge key (`merge_8_1`, `merge_24_1`, `merge_54_1`).
 
+- The repository's proof timing harness (`examples/browser/scripts/proof-timing.mjs`, `scripts/proof-timing-report.mjs`) times transfers of 1 to 24 notes and a merge of 24 through the benchmark page in headless Chrome, in the four scenarios the mobile SDK reports; CI comments the report on every pull request and keeps the history of `main` on the `proof-timing` branch.
+
 Changed
 
 - After a shape's first load the Cache API keeps the bridge's raw re-encoding of the key in place of the pinned file, so a later load skips point decompression: 2x2 loads in about 0.15 s instead of 3.9 s, 8x8 in 0.54 s instead of 15 s.

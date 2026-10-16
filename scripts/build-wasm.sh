@@ -25,6 +25,7 @@ install -m 644 "$bridge/zolana-prover.wasm" "$public/zolana-prover.wasm"
 install -m 644 "$shim" "$bridge/wasm_exec.js"
 install -m 644 "$shim" "$vendor/wasm_exec.js"
 install -m 644 "$module/prover-wasm/testdata/transfer-2x2.json" "$bridge/transfer-2x2.json"
-install -m 644 "$bridge/transfer-2x2.json" "$fixtures/transfer-2x2.json"
+# Every shape's request, for the proof timing harness.
+install -m 644 "$module"/prover-wasm/testdata/transfer-*.json "$fixtures/"
 node "$root/scripts/package-bridge.mjs"
 echo "staged Go prover, matching runtime shim and request fixture"
