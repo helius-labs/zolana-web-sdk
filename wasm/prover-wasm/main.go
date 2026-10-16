@@ -151,8 +151,21 @@ func (r *registry) loadKey(args []js.Value) any {
 		return errorResult(fmt.Errorf("could not copy all %d key bytes out of the JS heap", len(raw)))
 	}
 
+	// A compressed container is rewritten with raw points on the kernel's
+	// thread pool when the runtime has it: a wide key then loads in seconds
+	// instead of tens, and the result is the raw form the host caches.
+	var rawForm []byte
+	if points := kernelDecompressor(); points != nil && compressedContainer(raw) {
+		if transcoded, err := transcodeKey(raw, points); err == nil {
+			rawForm = transcoded
+		}
+	}
+	source := raw
+	if rawForm != nil {
+		source = rawForm
+	}
 	ps := new(common.TransferProofSystem)
-	if _, err := ps.UnsafeReadFrom(bytes.NewReader(raw)); err != nil {
+	if _, err := ps.UnsafeReadFrom(bytes.NewReader(source)); err != nil {
 		return errorResult(fmt.Errorf("deserializing %s: %w", name, err))
 	}
 	// Proofs report this digest so clients can match it to the proving key
@@ -164,8 +177,7 @@ func (r *registry) loadKey(args []js.Value) any {
 	key := cacheKey(circuitType, ps.NInputs, ps.NOutputs)
 	// The raw form first: preparing the kernel takes the points from the Go
 	// copy of the key.
-	var rawForm []byte
-	if args[3].Bool() {
+	if args[3].Bool() && rawForm == nil {
 		if rawForm, err = rawKey(ps); err != nil {
 			return errorResult(err)
 		}

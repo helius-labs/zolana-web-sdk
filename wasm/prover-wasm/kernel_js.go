@@ -103,6 +103,40 @@ func unpackKernelParts(result js.Value) (kernelParts, error) {
 }
 func (k *browserKernel) close() { k.key.Call("free") }
 
+// kernelDecompressor is the kernel's point decompression, when the runtime
+// has it; nil otherwise.
+func kernelDecompressor() decompressor {
+	functions := js.Global().Get("__moproGnarkDecompress")
+	if functions.Type() != js.TypeObject {
+		return nil
+	}
+	return &jsDecompressor{functions: functions}
+}
+
+type jsDecompressor struct {
+	functions js.Value
+}
+
+func (d *jsDecompressor) g1(compressed []byte) ([]byte, error) {
+	return d.call("g1", compressed)
+}
+
+func (d *jsDecompressor) g2(compressed []byte) ([]byte, error) {
+	return d.call("g2", compressed)
+}
+
+// A kernel error arrives as a JS exception, which Go sees as a panic.
+func (d *jsDecompressor) call(name string, compressed []byte) (raw []byte, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			raw, err = nil, fmt.Errorf("kernel decompression: %v", recovered)
+		}
+	}()
+	input := js.Global().Get("Uint8Array").New(len(compressed))
+	js.CopyBytesToJS(input, compressed)
+	return byteArray(d.functions.Call(name, input)), nil
+}
+
 func (k *browserKernel) commitment(index int, knowledge bool, values []fr.Element) (curve.G1Affine, error) {
 	var out curve.G1Affine
 	data := byteArray(k.key.Call("commitment", index, knowledge, packKernelFields(values)))
