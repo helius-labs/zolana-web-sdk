@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 version="${1:-}"
 mopro="${2:-}"
-mopro_revision="2bb184c23463d6415ebb5c9110bfd779df910d2f"
+mopro_revision="9619741e274c4765cbc2bf90d580a7d5ca0ece33"
 rust_toolchain="nightly-2025-11-15"
 go_toolchain="go1.27.1"
 

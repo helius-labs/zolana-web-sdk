@@ -58,6 +58,11 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
     await kernel.default();
     await kernel.initThreadPool(threads);
     Object.assign(globalThis, { __moproGnarkKernel: kernel.Key });
+    // A runtime with point decompression lends it to the Go bridge for key loads.
+    if (typeof kernel.decompress_g1 === "function" && typeof kernel.decompress_g2 === "function")
+      Object.assign(globalThis, {
+        __moproGnarkDecompress: { g1: kernel.decompress_g1, g2: kernel.decompress_g2 },
+      });
     activeThreads = threads;
   }
 
