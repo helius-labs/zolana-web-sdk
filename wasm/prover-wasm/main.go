@@ -162,6 +162,14 @@ func (r *registry) loadKey(args []js.Value) any {
 	ps.Confidential = circuitType != common.TransferRingAuthorityCircuitType
 
 	key := cacheKey(circuitType, ps.NInputs, ps.NOutputs)
+	// The raw form first: preparing the kernel takes the points from the Go
+	// copy of the key.
+	var rawForm []byte
+	if args[3].Bool() {
+		if rawForm, err = rawKey(ps); err != nil {
+			return errorResult(err)
+		}
+	}
 	r.put(key, ps)
 
 	// The constraint system's variable count is what groth16.Prove compares the
@@ -179,13 +187,9 @@ func (r *registry) loadKey(args []js.Value) any {
 		"accelerated": r.prepared[key].kernel != nil,
 		"fileName":    name,
 	}
-	if args[3].Bool() {
-		encoded, err := rawKey(ps)
-		if err != nil {
-			return errorResult(err)
-		}
-		out := js.Global().Get("Uint8Array").New(len(encoded))
-		js.CopyBytesToJS(out, encoded)
+	if rawForm != nil {
+		out := js.Global().Get("Uint8Array").New(len(rawForm))
+		js.CopyBytesToJS(out, rawForm)
 		result["raw"] = out
 	}
 	return result
