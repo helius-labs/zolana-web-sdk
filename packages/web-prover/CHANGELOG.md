@@ -20,6 +20,7 @@ Added
 
 Changed
 
+- The Go bridge hands the kernel its points as they lie in memory, without a copy or reflection in Go, and drops its own copies once the kernel holds them: about half the wasm heap of a loaded wide key, and a shorter load.
 - After a shape's first load the Cache API keeps the bridge's raw re-encoding of the key in place of the pinned file, so a later load skips point decompression: 2x2 loads in about 0.15 s instead of 3.9 s, 8x8 in 0.54 s instead of 15 s.
 - Keys live in the Cache API store `zolana-proving-keys-<key set>`; stores of other key sets, including 0.1.0-alpha's, are deleted on first use.
 - `wasm_key_manifest_error` now means the requested key is not in the pinned key set.

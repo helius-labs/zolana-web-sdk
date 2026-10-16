@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"runtime"
 	"syscall/js"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
@@ -40,25 +41,39 @@ func prepareKernel(c *preparedCircuit) {
 	}
 	c.kernel = kernel
 	installed = true
+	// The kernel holds the points now. The accelerated prover needs only the
+	// fixed points, the infinity flags and the commitment keys of the Go
+	// copy, so the slices go: for a wide key they are most of the heap.
+	pk.G1.A, pk.G1.B, pk.G1.K, pk.G1.Z, pk.G2.B = nil, nil, nil, nil, nil
+	runtime.GC()
 }
 
-// Gnark and arkworks use the same four little-endian Montgomery limbs.
-// Only decoded keys, validated solver plans and field elements cross this bridge.
+// Gnark and arkworks use the same four little-endian Montgomery limbs, which
+// is how these types lie in memory on wasm (little-endian, no padding), so the
+// bytes go to the JS heap as they are, without a copy or reflection in Go.
+// Only decoded keys, validated solver plans and field elements cross this
+// bridge.
 func packKernel(value any) js.Value {
-	var buf bytes.Buffer
-	if err := binary.Write(&buf, binary.LittleEndian, value); err != nil {
-		panic(err)
+	var data []byte
+	switch value := value.(type) {
+	case []curve.G1Affine:
+		data = bytesOf(value)
+	case []curve.G2Affine:
+		data = bytesOf(value)
+	case []fr.Element:
+		data = bytesOf(value)
+	case []uint32:
+		data = bytesOf(value)
+	default:
+		panic(fmt.Sprintf("packKernel: unsupported %T", value))
 	}
-	out := js.Global().Get("Uint8Array").New(buf.Len())
-	js.CopyBytesToJS(out, buf.Bytes())
+	out := js.Global().Get("Uint8Array").New(len(data))
+	js.CopyBytesToJS(out, data)
 	return out
 }
 
 func packKernelFields(values []fr.Element) js.Value {
-	data := encodeKernelFields(values)
-	out := js.Global().Get("Uint8Array").New(len(data))
-	js.CopyBytesToJS(out, data)
-	return out
+	return packKernel(values)
 }
 
 func (k *browserKernel) parts(sa, sb, sk, a, b, c []fr.Element) (kernelParts, error) {

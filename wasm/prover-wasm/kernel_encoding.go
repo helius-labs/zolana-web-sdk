@@ -1,21 +1,23 @@
 package main
 
 import (
-	"encoding/binary"
+	"unsafe"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 )
 
-// The arithmetic bridge uses four little-endian Montgomery limbs per element.
-// Avoid reflection on the six large field vectors transferred for every proof.
+// The arithmetic bridge uses four little-endian Montgomery limbs per element:
+// the memory of an fr.Element on a little-endian target, as of every type
+// packKernel sends.
 func encodeKernelFields(values []fr.Element) []byte {
-	out := make([]byte, len(values)*32)
-	for i, value := range values {
-		encoded := out[i*32 : (i+1)*32]
-		binary.LittleEndian.PutUint64(encoded[0:8], value[0])
-		binary.LittleEndian.PutUint64(encoded[8:16], value[1])
-		binary.LittleEndian.PutUint64(encoded[16:24], value[2])
-		binary.LittleEndian.PutUint64(encoded[24:32], value[3])
+	return bytesOf(values)
+}
+
+// The memory of a slice of plain values, to send as it is.
+func bytesOf[T any](values []T) []byte {
+	if len(values) == 0 {
+		return nil
 	}
-	return out
+	var element T
+	return unsafe.Slice((*byte)(unsafe.Pointer(&values[0])), int(unsafe.Sizeof(element))*len(values))
 }
