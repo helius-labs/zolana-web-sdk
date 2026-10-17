@@ -141,13 +141,13 @@ export function markdown(current, baseline, title, flag, { before, after, intro 
       "",
     );
   lines.push(
-    ...table(current, baseline, shapes, "scenario", ROWS.map(([row]) => [row, row]), scenarioText, total, flag),
+    ...table(current, baseline, shapes, "by scenario", ROWS.map(([row]) => [row, row]), scenarioText, total, flag),
     "",
     ...table(
       current,
       baseline,
       shapes,
-      "stage",
+      "by stage",
       STAGES.map((stage) => [stage, stage.replace("_ms", "").replace("load", "key load")]),
       stageText,
       stageValue,

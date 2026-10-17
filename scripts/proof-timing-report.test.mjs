@@ -62,7 +62,7 @@ test("merges follow transfers, and a failed shape shows in its rows and under th
   const current = report(lines);
   assert.deepEqual(Object.keys(current.cells), ["1x2", "24x2", "merge-24x1"]);
   const text = markdown(current, undefined, "t", 25);
-  assert.match(text, /\| scenario \| 1 → 2 \| 24 → 2 \| merge 24 → 1 \|/u);
+  assert.match(text, /\| by scenario \| 1 → 2 \| 24 → 2 \| merge 24 → 1 \|/u);
   assert.match(text, /\| warm \| 0\.32 s \| failed \| 0\.32 s \|/u);
   assert.match(text, /\| first run after restart \| 0\.34 s \| failed \| 0\.34 s \|/u);
   assert.match(text, /- 24 → 2, fresh run: kernel out of memory/u);
