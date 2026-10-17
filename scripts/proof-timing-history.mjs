@@ -63,7 +63,7 @@ export function readme(history, repo, last) {
   const lines = [
     "# Proof timing on main",
     "",
-    "Written by CI after every push to `main` (`scripts/proof-timing-history.mjs` on `main`), from headless Chrome on each CI runner. Runner numbers compare commits, not laptops: about 20 % between two commits can be the runner. The data is in `history/`, a line per commit.",
+    "Written by CI after every push to `main` (`scripts/proof-timing-history.mjs` on `main`), from headless Chrome on each CI runner. Runner numbers compare commits, not laptops: up to about 30 % between two commits can be the runner. The data is in `history/`, a line per commit.",
     "",
   ];
   const dir = join(history, "history");

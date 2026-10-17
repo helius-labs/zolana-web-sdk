@@ -31,8 +31,9 @@ const STAGES = ["load_ms", "witness_ms", "prove_ms"];
 // A change in time below this is not reported: a witness of 1 ms against
 // 3 ms is +200 % of nothing.
 const LEAST_CHANGE_MS = 50;
-// Hosted runners vary by about 20 % between runs of one commit.
-export const FLAG = 25;
+// Two runs of one commit on hosted runners differ by up to about 30 % (#27:
+// Linux 8 → 2 +25 %, Windows 24 → 2 -26 %, macOS 8 → 2 -28 %).
+export const FLAG = 35;
 // The runners in the order the report lists them; others follow by name.
 const ORDER = ["chrome-linux", "chrome-windows", "chrome-macos"];
 const SYSTEMS = { linux: "Linux", macos: "macOS", windows: "Windows" };
