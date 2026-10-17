@@ -56,15 +56,16 @@ jobs:
           path: examples/browser/dist/
 
   # The proof timing of every shape (README, "Proof timing") in headless
-  # Chrome on a Linux, a Windows and a macOS runner, each on its own
-  # processors, beside the checks. A newer push to a pull request cancels its
-  # bench; every push to main is benched.
+  # Chrome, beside the checks: on Linux, a server VM, whether a commit made
+  # proving faster or slower, and on macOS, an Apple M1 VM, the nearest to a
+  # laptop. Each runner proves on its own processors. A newer push to a pull
+  # request cancels its bench; every push to main is benched.
   bench:
     needs: bench-page
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     concurrency:
       group: bench-${{ matrix.os }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}

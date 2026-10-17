@@ -35,7 +35,7 @@ const LEAST_CHANGE_MS = 50;
 // Linux 8 → 2 +25 %, Windows 24 → 2 -26 %, macOS 8 → 2 -28 %).
 export const FLAG = 35;
 // The runners in the order the report lists them; others follow by name.
-const ORDER = ["chrome-linux", "chrome-windows", "chrome-macos"];
+const ORDER = ["chrome-linux", "chrome-macos"];
 const SYSTEMS = { linux: "Linux", macos: "macOS", windows: "Windows" };
 const LINE = /ZOLANA_TIMING (\{.*\})/u;
 
@@ -206,7 +206,7 @@ export function runnersMarkdown(reports, runners, baselines, flag, { repo, after
       "",
     );
   lines.push(
-    "The proof, key loaded, by shape (notes → outputs): medians of each runner, headless Chrome on the runner's own processors. Runner numbers compare commits, not laptops. Each runner's key load and first runs are in its tables below.",
+    "The proof, key loaded, by shape (notes → outputs): medians of each runner, headless Chrome on the runner's own processors. The Linux runner, a server VM, says whether a commit made proving faster or slower; the macOS runner, an Apple M1 VM, is the nearest to a laptop. Each runner's key load and first runs are in its tables below.",
     "",
   );
   const baselineReports = Object.keys(baselines).length
