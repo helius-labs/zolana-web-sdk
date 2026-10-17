@@ -19,7 +19,8 @@
 // fetches and decompresses the key (the `download` bracket is that fetch and
 // decode); the `restart` rows reload the page, so the first proof loads the
 // key from the raw-key cache. ZOLANA_TIMING_DIR/<label>/ receives the lines
-// as timing.log and the machine as runner.json (browser, system, threads);
+// as timing.log and the machine as runner.json (browser, system, processor,
+// memory, threads);
 // ZOLANA_TIMING_LABEL names it, chrome-linux, chrome-macos or
 // chrome-windows by default. Keys come from where the page loads them: set
 // VITE_ZOLANA_KEYS_URL to the key CDN for shapes that are not staged under
@@ -28,6 +29,7 @@
 // DEMO_URL points at a running page. CHROME_BIN and CHROME_NO_SANDBOX work
 // as in the browser test.
 import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpus, totalmem } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Builder, By } from "selenium-webdriver";
@@ -89,6 +91,10 @@ async function open() {
       browser: `Chrome ${String(capabilities.getBrowserVersion()).split(".")[0]}`,
       system,
       arch: process.arch,
+      // A runner's processor is not in its image name: its own name says
+      // what the numbers ran on.
+      cpu: cpus()[0]?.model.trim() ?? "",
+      memory_gib: Math.round(totalmem() / 2 ** 30),
       threads: await driver.executeScript("return navigator.hardwareConcurrency"),
     };
     writeFileSync(join(out, "runner.json"), JSON.stringify(runner) + "\n");

@@ -173,7 +173,8 @@ export function markdown(current, baseline, flag, { before, after } = {}) {
 /** A runner as the report names it, from the harness's runner.json. */
 export function runnerName(label, runner) {
   if (!runner) return label;
-  return `${SYSTEMS[runner.system] ?? runner.system} ${runner.arch}, ${String(runner.threads)} threads, ${runner.browser}`;
+  const machine = runner.cpu ? `${runner.cpu}, ${String(runner.memory_gib)} GiB, ` : "";
+  return `${SYSTEMS[runner.system] ?? runner.system} ${runner.arch}, ${machine}${String(runner.threads)} threads, ${runner.browser}`;
 }
 
 export const commitLink = (commit, repo) => {

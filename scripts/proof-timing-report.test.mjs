@@ -103,6 +103,10 @@ test("the runners come in one report: the proof by runner, then each runner's ta
   );
   assert.equal(runnerName("chrome-linux", runners["chrome-linux"]), "Linux x64, 4 threads, Chrome 141");
   assert.equal(runnerName("chrome-other", undefined), "chrome-other");
+  assert.equal(
+    runnerName("chrome-macos", { ...runners["chrome-macos"], cpu: "Apple M1 (Virtual)", memory_gib: 7 }),
+    "macOS arm64, Apple M1 (Virtual), 7 GiB, 3 threads, Chrome 141",
+  );
   assert.match(text, /^### Proof timing in Chrome\n/u);
   assert.match(text, /\*\*Before:\*\* `main` at \[`abc1234`\]\(https:\/\/github\.com\/o\/r\/commit\/abc1234def\)\./u);
   // Linux before macOS, whatever the order of the logs; a runner with no
