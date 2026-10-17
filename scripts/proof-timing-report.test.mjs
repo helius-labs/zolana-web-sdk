@@ -47,9 +47,13 @@ test("the markdown carries the download bracket and the change against a baselin
   baseline.cells["1x2"].warm.total_ms = 250;
   const text = markdown(current, baseline, "Proof timing: test", 15);
   assert.match(text, /\| first run, including download \| before \| 2\.60 s \(download: 1\.90 s, 8\.8 MiB\) \|/u);
-  assert.match(text, /\| \| after \| 2\.60 s \(download: 1\.90 s, 8\.8 MiB\) \(\+0 %\) \|/u);
+  assert.match(text, /\| \| after \| 2\.60 s \(download: 1\.90 s, 8\.8 MiB\) \|/u);
   assert.match(text, /\| warm \| before \| 0\.25 s \|\n\| \| after \| 0\.32 s \(\+28 % \*\*!\*\*\) \|/u);
   assert.match(text, /\| key load \| before \| 0\.03 s/u);
+  // Verification is not a cost of proving; a two-millisecond change is no percentage.
+  assert.doesNotMatch(text, /\| verify/u);
+  baseline.stages["1x2"].witness_ms = 2;
+  assert.match(markdown(current, baseline, "t", 15), /\| \| after \| 0\.00 s \|\n/u);
   assert.doesNotMatch(markdown(current, undefined, "t", 15), /%|\| before \||\| after \|/u);
 });
 
@@ -62,7 +66,7 @@ test("merges follow transfers, and a failed shape shows in its rows and under th
   const current = report(lines);
   assert.deepEqual(Object.keys(current.cells), ["1x2", "24x2", "merge-24x1"]);
   const text = markdown(current, undefined, "t", 25);
-  assert.match(text, /\| scenario \| 1 → 2 \| 24 → 2 \| merge 24 → 1 \|/u);
+  assert.match(text, /\| by scenario \| 1 → 2 \| 24 → 2 \| merge 24 → 1 \|/u);
   assert.match(text, /\| warm \| 0\.32 s \| failed \| 0\.32 s \|/u);
   assert.match(text, /\| first run after restart \| 0\.34 s \| failed \| 0\.34 s \|/u);
   assert.match(text, /- 24 → 2, fresh run: kernel out of memory/u);

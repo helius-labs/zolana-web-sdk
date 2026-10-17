@@ -19,7 +19,12 @@ export const ROWS = [
   ["first run after restart", "restart", "first"],
   ["repeated after restart", "restart", "rest"],
 ];
-const STAGES = ["load_ms", "witness_ms", "prove_ms", "verify_ms"];
+// The proof's verification stays in report.json but out of the tables: it is
+// a check of the prover, not a cost of proving.
+const STAGES = ["load_ms", "witness_ms", "prove_ms"];
+// A change in time below this is not reported: a witness of 1 ms against
+// 3 ms is +200 % of nothing.
+const LEAST_CHANGE_MS = 50;
 // Hosted runners vary by about 20 % between runs of one commit.
 export const FLAG = 25;
 const LINE = /ZOLANA_TIMING (\{.*\})/u;
@@ -81,7 +86,7 @@ export function report(lines) {
 export const seconds = (ms) => `${(ms / 1000).toFixed(2)} s`;
 
 function change(now, before, flag) {
-  if (before === undefined || before === 0 || now === undefined) return "";
+  if (before === undefined || before === 0 || now === undefined || Math.abs(now - before) < LEAST_CHANGE_MS) return "";
   const delta = ((now - before) / before) * 100;
   const sign = delta >= 0 ? "+" : "";
   return ` (${sign}${delta.toFixed(0)} %${Math.abs(delta) >= flag ? " **!**" : ""})`;
@@ -141,13 +146,13 @@ export function markdown(current, baseline, title, flag, { before, after, intro 
       "",
     );
   lines.push(
-    ...table(current, baseline, shapes, "scenario", ROWS.map(([row]) => [row, row]), scenarioText, total, flag),
+    ...table(current, baseline, shapes, "by scenario", ROWS.map(([row]) => [row, row]), scenarioText, total, flag),
     "",
     ...table(
       current,
       baseline,
       shapes,
-      "stage",
+      "by stage",
       STAGES.map((stage) => [stage, stage.replace("_ms", "").replace("load", "key load")]),
       stageText,
       stageValue,
