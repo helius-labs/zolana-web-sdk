@@ -5,8 +5,9 @@
 //
 //   ZOLANA_TIMING_SHAPES=1x2,8x2 ZOLANA_TIMING_ROUNDS=4 node examples/browser/scripts/proof-timing.mjs
 //
-// ZOLANA_TIMING_THREADS sets the processors the page reports, and so the
-// kernel's thread pool: 4 for a phone-like run.
+// The kernel's thread pool takes the processors the page reports, the
+// machine's own; ZOLANA_TIMING_THREADS sets them instead (4 for a low-end
+// laptop on a bigger machine).
 //
 // A shape is `<inputs>x<outputs>` for a confidential transfer or
 // `merge-<inputs>x1` for a merge, its request in wasm/prover-wasm/testdata.
@@ -17,17 +18,21 @@
 // The `fresh` rows start with the Cache API cleared, so the first proof
 // fetches and decompresses the key (the `download` bracket is that fetch and
 // decode); the `restart` rows reload the page, so the first proof loads the
-// key from the raw-key cache. ZOLANA_TIMING_DIR receives the lines as
-// `<label>-<run>.log`; ZOLANA_TIMING_LABEL names the device (chrome). Keys
-// come from where the page loads them: set VITE_ZOLANA_KEYS_URL to the key
-// CDN for shapes that are not staged under public/keys. DEMO_URL points at a
-// running page instead of starting the Vite server; CHROME_BIN and
-// CHROME_NO_SANDBOX work as in the browser test.
-import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
+// key from the raw-key cache. ZOLANA_TIMING_DIR/<label>/ receives the lines
+// as timing.log and the machine as runner.json (browser, system, threads);
+// ZOLANA_TIMING_LABEL names it, chrome-linux, chrome-macos or
+// chrome-windows by default. Keys come from where the page loads them: set
+// VITE_ZOLANA_KEYS_URL to the key CDN for shapes that are not staged under
+// public/keys. ZOLANA_TIMING_BUILT=1 serves the built page (`npm run
+// build:example`, in dist/), as CI does, instead of the Vite dev server;
+// DEMO_URL points at a running page. CHROME_BIN and CHROME_NO_SANDBOX work
+// as in the browser test.
+import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Builder, By } from "selenium-webdriver";
 import chrome from "selenium-webdriver/chrome.js";
-import { createServer } from "vite";
+import { createServer, preview } from "vite";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const lock = JSON.parse(
@@ -42,15 +47,22 @@ const keyOf = (shape) =>
   shape.startsWith("merge-")
     ? `merge_${shape.replace("merge-", "").replace("x", "_")}.key`
     : `transfer_confidential_${shape.replace("x", "_")}.key`;
-const label = process.env.ZOLANA_TIMING_LABEL || "chrome";
+const system = { darwin: "macos", linux: "linux", win32: "windows" }[process.platform] ?? process.platform;
+const label = process.env.ZOLANA_TIMING_LABEL || `chrome-${system}`;
 const threads = process.env.ZOLANA_TIMING_THREADS ? Number(process.env.ZOLANA_TIMING_THREADS) : undefined;
-const out = process.env.ZOLANA_TIMING_DIR;
+const out = process.env.ZOLANA_TIMING_DIR && join(process.env.ZOLANA_TIMING_DIR, label);
 if (out) mkdirSync(out, { recursive: true });
 
-const server = process.env.DEMO_URL
-  ? undefined
-  : await createServer({ root, logLevel: "warn", server: { port: 5178, strictPort: false } });
-await server?.listen();
+/** The page's server: none for DEMO_URL, the built page, or the dev server. */
+async function serve() {
+  const port = { port: 5178, strictPort: false };
+  if (process.env.DEMO_URL) return undefined;
+  if (process.env.ZOLANA_TIMING_BUILT === "1") return preview({ root, logLevel: "warn", preview: port });
+  const dev = await createServer({ root, logLevel: "warn", server: port });
+  await dev.listen();
+  return dev;
+}
+const server = await serve();
 const demoUrl = process.env.DEMO_URL || server.resolvedUrls.local[0];
 const options = new chrome.Options().addArguments("--headless", "--window-size=1440,1100");
 if (process.env.CHROME_BIN) options.setChromeBinaryPath(process.env.CHROME_BIN);
@@ -71,6 +83,16 @@ async function open() {
     throw new Error(`the page does not report ${String(threads)} processors`);
   const isolated = await driver.executeScript("return crossOriginIsolated");
   if (!isolated) throw new Error("the page is not cross-origin isolated: the kernel cannot run");
+  if (out) {
+    const capabilities = await driver.getCapabilities();
+    const runner = {
+      browser: `Chrome ${String(capabilities.getBrowserVersion()).split(".")[0]}`,
+      system,
+      arch: process.arch,
+      threads: await driver.executeScript("return navigator.hardwareConcurrency"),
+    };
+    writeFileSync(join(out, "runner.json"), JSON.stringify(runner) + "\n");
+  }
 }
 
 const button = (text) => driver.findElement(By.xpath(`//button[normalize-space(.)='${text}']`));
@@ -126,7 +148,7 @@ async function keyLoadMs() {
 function emit(line) {
   const text = `ZOLANA_TIMING ${JSON.stringify(line)}`;
   console.log(text);
-  if (out) appendFileSync(`${out}/${label}-${line.run}.log`, text + "\n");
+  if (out) appendFileSync(join(out, "timing.log"), text + "\n");
 }
 
 async function scenario(run, shape, json, keyBytes) {
@@ -138,7 +160,6 @@ async function scenario(run, shape, json, keyBytes) {
     const load = round === 0 ? await keyLoadMs() : 0;
     const rest = Math.max(0, Math.round(total - proving - verify - load));
     emit({
-      label,
       run,
       shape,
       round,
@@ -171,7 +192,7 @@ try {
       // The report shows the shape as failed; the other shapes still run, in
       // a new browser in case this one crashed or hangs.
       failed = true;
-      emit({ label, run, shape, error: String(error?.message ?? error).split("\n")[0] });
+      emit({ run, shape, error: String(error?.message ?? error).split("\n")[0] });
       await driver.quit().catch(() => {});
       await open();
     }

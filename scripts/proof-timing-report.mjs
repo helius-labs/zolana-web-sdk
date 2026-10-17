@@ -1,16 +1,22 @@
 #!/usr/bin/env node
-// The proof timing report from the `ZOLANA_TIMING {json}` lines of the `fresh`
-// and `restart` runs of examples/browser/scripts/proof-timing.mjs: the same
-// table as the mobile SDK's report. Rows are the client's four scenarios,
-// columns the shapes, transfers (`8x2`) and then merges (`merge-24x1`), a cell
-// the total with the download in brackets when there was one, or `failed`; a
-// second table splits the stages. With a baseline, each row comes twice,
-// `before` (the baseline) and `after` (these logs) with the change, marked past
-// the flag percent; --before and --after name the two commits.
+// The proof timing report of the CI runners from the `ZOLANA_TIMING {json}`
+// lines of the `fresh` and `restart` runs of
+// examples/browser/scripts/proof-timing.mjs, laid out as the mobile SDK's.
 //
-//   node scripts/proof-timing-report.mjs --logs DIR [--baseline report.json]
-//     [--before TEXT] [--after TEXT] [--out report.json] [--summary FILE] [--title TEXT] [--flag 25]
-import { appendFileSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+//   node scripts/proof-timing-report.mjs --logs DIR [--repo OWNER/NAME] [--after TEXT]
+//     [--summary FILE] [--flag 25]
+//
+// DIR holds a directory per runner, `<label>/`, with its timing logs (`*.log`),
+// the harness's runner.json and, in CI, baseline.json: the runner's last entry
+// in the history of `main` ({commit, date, runner, report}). The script writes
+// `<label>/report.json` and prints the report: the proof time by runner, then
+// each runner's tables. In those, rows are the client's four scenarios and
+// then the stages, columns the shapes, transfers (`8x2`) and then merges
+// (`merge-24x1`); a scenario cell is the total, with the download in brackets
+// when there was one, or `failed`. With a baseline, each row comes twice,
+// `before` (the baseline) and `after` (these logs) with the change, marked past
+// the flag percent; --after names this commit.
+import { appendFileSync, readdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export const ROWS = [
@@ -27,6 +33,9 @@ const STAGES = ["load_ms", "witness_ms", "prove_ms"];
 const LEAST_CHANGE_MS = 50;
 // Hosted runners vary by about 20 % between runs of one commit.
 export const FLAG = 25;
+// The runners in the order the report lists them; others follow by name.
+const ORDER = ["chrome-linux", "chrome-windows", "chrome-macos"];
+const SYSTEMS = { linux: "Linux", macos: "macOS", windows: "Windows" };
 const LINE = /ZOLANA_TIMING (\{.*\})/u;
 
 export function records(text) {
@@ -129,20 +138,15 @@ function table(current, baseline, shapes, name, keys, text, value, flag) {
   return lines;
 }
 
-/** `before` and `after` name the two commits, as markdown. */
-export function markdown(current, baseline, title, flag, { before, after, intro = true } = {}) {
+/** One runner's tables; `before` and `after` name the two commits, as markdown. */
+export function markdown(current, baseline, flag, { before, after } = {}) {
   const shapes = [...new Set([...Object.keys(current.cells), ...Object.keys(baseline?.cells ?? {})])].sort(byShape);
-  const lines = title ? [`### ${title}`, ""] : [];
+  const lines = [];
   if (after)
     lines.push(
       baseline && before
         ? `**Before:** ${before}. **After:** ${after}.`
         : `**After:** ${after}. No report of \`main\` to compare with yet.`,
-      "",
-    );
-  if (intro)
-    lines.push(
-      "Medians of one browser, by shape (notes → outputs). Runner numbers are for comparing commits, not for how fast a device is.",
       "",
     );
   lines.push(
@@ -166,38 +170,107 @@ export function markdown(current, baseline, title, flag, { before, after, intro 
   return lines.join("\n") + "\n";
 }
 
+/** A runner as the report names it, from the harness's runner.json. */
+export function runnerName(label, runner) {
+  if (!runner) return label;
+  return `${SYSTEMS[runner.system] ?? runner.system} ${runner.arch}, ${String(runner.threads)} threads, ${runner.browser}`;
+}
+
+export const commitLink = (commit, repo) => {
+  const short = `\`${commit.slice(0, 7)}\``;
+  return repo ? `[${short}](https://github.com/${repo}/commit/${commit})` : short;
+};
+
+const rank = (label) => (ORDER.includes(label) ? ORDER.indexOf(label) : ORDER.length);
+const proofText = (reports, shape, label) =>
+  stageText(reports[label], shape, "prove_ms") || (reports[label]?.errors?.[shape] === undefined ? "" : "failed");
+const proof = (reports, shape, label) => stageValue(reports[label], shape, "prove_ms");
+
+/**
+ * The proof time by runner, then each runner's tables. `reports` is
+ * {label: report.json}, `runners` {label: runner.json}, `baselines`
+ * {label: history entry}.
+ */
+export function runnersMarkdown(reports, runners, baselines, flag, { repo, after } = {}) {
+  const labels = Object.keys(reports).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const shapes = [...new Set(labels.flatMap((label) => Object.keys(reports[label].cells)))].sort(byShape);
+  const before = [...new Set(labels.filter((label) => baselines[label]).map((label) => baselines[label].commit))]
+    .map((commit) => `\`main\` at ${commitLink(commit, repo)}`)
+    .join(", ");
+  const lines = ["### Proof timing in Chrome", ""];
+  if (after)
+    lines.push(
+      before ? `**Before:** ${before}. **After:** ${after}.` : `**After:** ${after}. No report of \`main\` to compare with yet.`,
+      "",
+    );
+  lines.push(
+    "The proof, key loaded, by shape (notes → outputs): medians of each runner, headless Chrome on the runner's own processors. Runner numbers compare commits, not laptops. Each runner's key load and first runs are in its tables below.",
+    "",
+  );
+  const baselineReports = Object.keys(baselines).length
+    ? Object.fromEntries(Object.entries(baselines).map(([label, entry]) => [label, entry.report]))
+    : undefined;
+  lines.push(
+    ...table(
+      reports,
+      baselineReports,
+      shapes,
+      "by runner",
+      labels.map((label) => [label, runnerName(label, runners[label])]),
+      proofText,
+      proof,
+      flag,
+    ),
+  );
+  for (const label of labels) {
+    lines.push("", `<details><summary>${runnerName(label, runners[label])}</summary>`, "");
+    lines.push(markdown(reports[label], baselines[label]?.report, flag), "</details>");
+  }
+  return lines.join("\n") + "\n";
+}
+
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
   return index === -1 ? fallback : process.argv[index + 1];
 }
 
+const json = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined);
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const logs = argument("--logs");
   if (!logs) {
     console.error(
-      "usage: proof-timing-report.mjs --logs DIR [--baseline FILE] [--before TEXT] [--after TEXT] [--out FILE] [--summary FILE] [--title TEXT] [--flag PERCENT]",
+      "usage: proof-timing-report.mjs --logs DIR [--repo OWNER/NAME] [--after TEXT] [--summary FILE] [--flag PERCENT]",
     );
     process.exit(2);
   }
-  const found = readdirSync(logs)
-    .filter((name) => name.endsWith(".log"))
-    .sort()
-    .flatMap((name) => records(readFileSync(join(logs, name), "utf8")));
-  if (found.length === 0) {
+  const reports = {};
+  const runners = {};
+  const baselines = {};
+  for (const label of readdirSync(logs).filter((name) => statSync(join(logs, name)).isDirectory())) {
+    const dir = join(logs, label);
+    const found = readdirSync(dir)
+      .filter((name) => name.endsWith(".log"))
+      .sort()
+      .flatMap((name) => records(readFileSync(join(dir, name), "utf8")));
+    if (found.length === 0) {
+      console.error(`no ZOLANA_TIMING lines under ${dir}`);
+      continue;
+    }
+    reports[label] = report(found);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(reports[label], null, 2) + "\n");
+    runners[label] = json(join(dir, "runner.json"));
+    if (existsSync(join(dir, "baseline.json"))) baselines[label] = json(join(dir, "baseline.json"));
+  }
+  if (Object.keys(reports).length === 0) {
     console.error(`no ZOLANA_TIMING lines under ${logs}`);
     process.exit(1);
   }
-  const current = report(found);
-  const baselinePath = argument("--baseline");
-  const baseline =
-    baselinePath && existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) : undefined;
-  const text = markdown(current, baseline, argument("--title", "Proof timing"), Number(argument("--flag", FLAG)), {
-    before: argument("--before"),
+  const text = runnersMarkdown(reports, runners, baselines, Number(argument("--flag", FLAG)), {
+    repo: argument("--repo"),
     after: argument("--after"),
   });
   process.stdout.write(text);
-  const out = argument("--out");
-  if (out) writeFileSync(out, JSON.stringify(current, null, 2) + "\n");
   const summary = argument("--summary");
   if (summary) appendFileSync(summary, text + "\n");
 }
