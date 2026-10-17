@@ -95,10 +95,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+      # By name into a named directory: a single artifact matched by pattern
+      # is extracted without one, and the history keys reports on it.
       - uses: actions/download-artifact@v8
         with:
-          pattern: proof-timing-*
-          path: ${{ runner.temp }}/reports
+          name: proof-timing-chrome
+          path: ${{ runner.temp }}/reports/proof-timing-chrome
       - run: bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
         env:
           GH_TOKEN: ${{ github.token }}
