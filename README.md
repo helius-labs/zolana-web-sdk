@@ -2,6 +2,8 @@
 
 Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
 
+**Performance.** With runtime 0.3.1 in Chrome at four threads on an Apple M5 Pro, a warm proof (key loaded, nothing to download) takes 0.20 s for one note to two outputs, 0.31 s for two, 0.54 s for four, 0.97 s for eight, 1.8 s for sixteen and 2.7 s for twenty-four; the first proof after a page reload adds the key's load from the raw-key cache (0.08 s to 1.8 s), and the first ever its download (9 MB to 180 MB). CI benches every pull request on four-core runners, about 3.5 times slower than that machine, and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+
 ## Packages
 
 - `@heliuslabs/zolana-web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
