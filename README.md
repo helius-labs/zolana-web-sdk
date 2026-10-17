@@ -67,8 +67,8 @@ To rebuild runtime assets manually, use the pinned Mopro checkout and the commit
 
 ```sh
 git clone https://github.com/sergeytimoshin/mopro.git /tmp/mopro
-git -C /tmp/mopro checkout 56391dc24ac4a04f046b9ec5907233449bbad55d
-npm run build:runtime -- 0.3.0 /tmp/mopro
+git -C /tmp/mopro checkout d352504704d83c5a4a2eae9d42d7db9b4ab3f80e
+npm run build:runtime -- 0.3.1 /tmp/mopro
 ```
 
 Maintainers can run the `Runtime release` GitHub Actions workflow instead. After publishing a new runtime, update the version, release URL, size, and SHA-256 in `runtime.lock.json` before changing the SDK default.
