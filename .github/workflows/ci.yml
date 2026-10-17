@@ -31,19 +31,10 @@ jobs:
         env:
           CHROME_NO_SANDBOX: "1"
 
-  # The proof timing report of every shape (README, "Proof timing"), beside
-  # the checks; it comments on the pull request. A newer push to a pull
-  # request cancels its bench; every push to main is benched.
-  bench:
+  # The bench page, built once for every runner, with the keys from the key
+  # CDN as an app loads them.
+  bench-page:
     runs-on: ubuntu-latest
-    concurrency:
-      group: bench-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-      cancel-in-progress: true
-    permissions:
-      contents: read
-      pull-requests: write
-    env:
-      ZOLANA_TIMING_DIR: ${{ github.workspace }}/.timing
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -56,54 +47,91 @@ jobs:
           cache-dependency-path: wasm/go.sum
       - run: npm ci
       - run: npm run setup
-      - name: Proof timing
-        timeout-minutes: 90
-        run: node examples/browser/scripts/proof-timing.mjs
+      - run: npm run build:example
         env:
-          CHROME_NO_SANDBOX: "1"
-          ZOLANA_TIMING_LABEL: chrome
-          # The page fetches every key from the key CDN, as an app does.
           VITE_ZOLANA_KEYS_URL: https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/3a1c88f90f609eb1
-      - name: Proof timing report
-        if: success() || failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/proof-timing-ci.sh chrome
-      - if: success() || failure()
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
-          name: proof-timing-chrome
-          path: |
-            .timing/report.json
-            .timing/report.md
-          if-no-files-found: ignore
+          name: bench-page
+          path: examples/browser/dist/
 
-  # After each push to main, the bench report joins the history on the
-  # proof-timing branch, which pull requests compare against. One push at a
-  # time writes it.
-  proof-timing-history:
-    if: github.event_name == 'push' && !cancelled()
-    needs: bench
-    runs-on: ubuntu-latest
+  # The proof timing of every shape (README, "Proof timing") in headless
+  # Chrome, beside the checks: on Linux, a server VM, whether a commit made
+  # proving faster or slower, and on macOS, an Apple M1 VM, the nearest to a
+  # laptop. Each runner proves on its own processors. A newer push to a pull
+  # request cancels its bench; every push to main is benched.
+  bench:
+    needs: bench-page
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     concurrency:
-      group: proof-timing-history
-      cancel-in-progress: false
-    permissions:
-      contents: write
+      group: bench-${{ matrix.os }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    env:
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      # By name into a named directory: a single artifact matched by pattern
-      # is extracted without one, and the history keys reports on it.
+          cache: npm
+      - run: npm ci
       - uses: actions/download-artifact@v8
         with:
-          name: proof-timing-chrome
-          path: ${{ runner.temp }}/reports/proof-timing-chrome
-      - run: bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
+          name: bench-page
+          path: examples/browser/dist
+      - name: Proof timing
+        timeout-minutes: 90
+        run: node examples/browser/scripts/proof-timing.mjs
+        env:
+          CHROME_NO_SANDBOX: ${{ runner.os == 'Linux' && '1' || '' }}
+          ZOLANA_TIMING_BUILT: "1"
+      - if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-timing-${{ matrix.os }}
+          path: timing/
+          if-no-files-found: ignore
+
+  # One report of every runner, commented on the pull request; after a push
+  # to main it joins the history on the proof-timing branch, which pull
+  # requests compare against, and is commented on the commit. One push at a
+  # time writes the history.
+  bench-report:
+    if: ${{ !cancelled() && needs.bench.result != 'skipped' }}
+    needs: bench
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'proof-timing-history' || format('proof-timing-report-{0}', github.ref) }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      # A runner that failed before its first proof uploads no logs.
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: proof-timing-*
+          merge-multiple: true
+          path: timing
+      - name: Proof timing report
         env:
           GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-ci.sh
+      - if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-history.sh "$ZOLANA_TIMING_DIR"
 
   upstream:
     runs-on: ubuntu-latest
