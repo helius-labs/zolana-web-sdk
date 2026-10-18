@@ -145,6 +145,9 @@ func unpackKernelParts(result js.Value) (kernelParts, error) {
 }
 func (k *browserKernel) close() { k.key.Call("free") }
 
+func (k *browserKernel) provesOnGPU() bool { return k.gpu && asyncProving }
+func (k *browserKernel) dropGPU()          { k.gpu = false }
+
 // kernelDecompressor is the kernel's point decompression, when the runtime
 // has it; nil otherwise.
 func kernelDecompressor() decompressor {

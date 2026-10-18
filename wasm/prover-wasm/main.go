@@ -73,7 +73,7 @@ func (r *registry) put(key string, ps *common.TransferProofSystem) {
 	clear(r.systems)
 	clear(r.prepared)
 	runtime.GC()
-	c := &preparedCircuit{cs: ps.ConstraintSystem.(*cs.R1CS), pk: ps.ProvingKey, digest: ps.ProvingKeySha256}
+	c := &preparedCircuit{cs: ps.ConstraintSystem.(*cs.R1CS), pk: ps.ProvingKey, vk: ps.VerifyingKey, digest: ps.ProvingKeySha256}
 	prepareKernel(c)
 	r.systems[key] = ps
 	r.prepared[key] = c
