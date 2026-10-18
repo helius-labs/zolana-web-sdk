@@ -27,7 +27,7 @@
 // public/keys. ZOLANA_TIMING_BUILT=1 serves the built page (`npm run
 // build:example`, in dist/), as CI does, instead of the Vite dev server;
 // DEMO_URL points at a running page. CHROME_BIN and CHROME_NO_SANDBOX work
-// as in the browser test.
+// as in the browser test; ZOLANA_TIMING_CHROME_ARGS adds Chrome switches.
 import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { cpus, totalmem } from "node:os";
 import { join } from "node:path";
@@ -67,6 +67,9 @@ async function serve() {
 const server = await serve();
 const demoUrl = process.env.DEMO_URL || server.resolvedUrls.local[0];
 const options = new chrome.Options().addArguments("--headless", "--window-size=1440,1100");
+// ZOLANA_TIMING_CHROME_ARGS adds switches, e.g. --disable-features=WebGPU to
+// time the kernel's CPU path where the GPU path is the default.
+for (const arg of (process.env.ZOLANA_TIMING_CHROME_ARGS ?? "").split(" ").filter(Boolean)) options.addArguments(arg);
 if (process.env.CHROME_BIN) options.setChromeBinaryPath(process.env.CHROME_BIN);
 if (process.env.CHROME_NO_SANDBOX === "1") options.addArguments("--no-sandbox");
 let driver;
