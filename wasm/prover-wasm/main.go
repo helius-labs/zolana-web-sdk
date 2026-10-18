@@ -340,6 +340,33 @@ func guard(fn func([]js.Value) any) js.Func {
 	})
 }
 
+// asyncGuard is guard for a call that may wait on the kernel's GPU: fn runs
+// in a goroutine and the caller gets a Promise of its result.
+func asyncGuard(fn func([]js.Value) any) js.Func {
+	return js.FuncOf(func(_ js.Value, args []js.Value) any {
+		held := append([]js.Value(nil), args...)
+		executor := js.FuncOf(func(_ js.Value, settle []js.Value) any {
+			resolve := settle[0]
+			go func() {
+				result := func() (result any) {
+					defer func() {
+						if recovered := recover(); recovered != nil {
+							result = errorResult(nil)
+						}
+					}()
+					asyncProving = true
+					defer func() { asyncProving = false }()
+					return fn(held)
+				}()
+				resolve.Invoke(result)
+			}()
+			return nil
+		})
+		defer executor.Release()
+		return js.Global().Get("Promise").New(executor)
+	})
+}
+
 func main() {
 	// gnark logs progress to stderr during Prove. Under js/wasm a write is an
 	// async JS operation, and `prove` is invoked synchronously from a JS callback,
@@ -354,6 +381,7 @@ func main() {
 	api := js.Global().Get("Object").New()
 	api.Set("loadKey", guard(keys.loadKey))
 	api.Set("prove", guard(keys.prove))
+	api.Set("proveAsync", asyncGuard(keys.prove))
 	api.Set("verify", guard(keys.verify))
 	api.Set("rawKeyFormat", rawKeyFormat)
 	api.Set("loadedKeys", guard(func([]js.Value) any {

@@ -17,7 +17,7 @@ target="${CARGO_TARGET_DIR:-$ringil/target/wasm}"
 out="$root/examples/browser/public/prover/accelerator"
 
 (cd "$ringil/crates/ringil-core" && CARGO_TARGET_DIR="$target" rustup run "$rust_toolchain" \
-  cargo rustc --release --target wasm32-unknown-unknown --crate-type cdylib)
+  cargo rustc --release --target wasm32-unknown-unknown --crate-type cdylib --features wgpu)
 bindgen="$(command -v wasm-bindgen || true)"
 if [[ -z "$bindgen" || "$("$bindgen" --version)" != "wasm-bindgen $bindgen_version" ]]; then
   bindgen="$HOME/Library/Caches/.wasm-pack/wasm-bindgen-cargo-install-$bindgen_version/wasm-bindgen"

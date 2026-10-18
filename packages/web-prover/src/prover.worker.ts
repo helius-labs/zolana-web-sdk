@@ -25,6 +25,8 @@ import { operationError, WasmProverError } from "./errors.js";
 interface ZolanaProverApi {
   loadKey(fileName: string, key: Uint8Array, sha256?: string, exportRaw?: boolean): unknown;
   prove(requestJson: string): unknown;
+  /** prove, waiting on the kernel's GPU; absent from older bridges. */
+  proveAsync?(requestJson: string): Promise<unknown>;
   loadedKeys(): unknown;
   verify(requestJson: string, proofJson: string): unknown;
   /** Absent from bridges that cannot load or export a raw key. */
@@ -57,6 +59,9 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
     const kernel = await import(/* @vite-ignore */ kernelUrl);
     await kernel.default();
     await kernel.initThreadPool(threads);
+    // WebGPU, where the page has it: keys loaded after this prove their MSMs
+    // and quotient on the GPU (the kernel falls back to the CPU without it).
+    if (typeof kernel.init_gpu === "function" && "gpu" in navigator) await kernel.init_gpu();
     Object.assign(globalThis, { __moproGnarkKernel: kernel.Key });
     // A runtime with point decompression lends it to the Go bridge for key loads.
     if (typeof kernel.decompress_g1 === "function" && typeof kernel.decompress_g2 === "function")
@@ -135,7 +140,10 @@ async function handle(request: WorkerRequest): Promise<unknown> {
       );
     }
     case "prove": {
-      const result = unwrap(requireApi().prove(request.body)) as { proof?: unknown };
+      const bridge = requireApi();
+      const result = unwrap(
+        bridge.proveAsync ? await bridge.proveAsync(request.body) : bridge.prove(request.body),
+      ) as { proof?: unknown };
       // The page rebuilds an HTTP response from this, so hand back the exact
       // JSON string the prover server would have sent.
       return result.proof;

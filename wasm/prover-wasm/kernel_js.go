@@ -17,6 +17,39 @@ import (
 type browserKernel struct {
 	key    js.Value
 	solver bool
+	// gpu: the key holds the page's WebGPU device, and proves through it
+	// when the call can wait (proveAsync).
+	gpu bool
+}
+
+// asyncProving is set while proveAsync runs: the kernel may then wait on
+// a Promise, which a synchronous call from JavaScript cannot.
+var asyncProving bool
+
+// await waits for a Promise from inside a goroutine, the event loop running
+// meanwhile.
+func await(promise js.Value) (js.Value, error) {
+	done := make(chan struct{})
+	var value, failure js.Value
+	resolved := false
+	then := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		value, resolved = args[0], true
+		close(done)
+		return nil
+	})
+	catch := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		failure = args[0]
+		close(done)
+		return nil
+	})
+	defer then.Release()
+	defer catch.Release()
+	promise.Call("then", then, catch)
+	<-done
+	if !resolved {
+		return js.Value{}, fmt.Errorf("kernel: %s", failure.Call("toString").String())
+	}
+	return value, nil
 }
 
 func prepareKernel(c *preparedCircuit) {
@@ -38,6 +71,7 @@ func prepareKernel(c *preparedCircuit) {
 	}
 	if program := kernelSolverProgram(c.cs, pk.InfinityA, pk.InfinityB); program != nil {
 		kernel.solver = kernel.key.Call("set_solver", packKernel(program), packKernelFields(c.cs.Coefficients)).Bool()
+		kernel.gpu = kernel.solver && kernel.key.Get("has_gpu").Type() == js.TypeFunction && kernel.key.Call("has_gpu").Bool()
 	}
 	c.kernel = kernel
 	installed = true
@@ -83,6 +117,14 @@ func (k *browserKernel) parts(sa, sb, sk, a, b, c []fr.Element) (kernelParts, er
 func (k *browserKernel) solveParts(witness []fr.Element) (kernelParts, bool, error) {
 	if !k.solver {
 		return kernelParts{}, false, nil
+	}
+	if k.gpu && asyncProving {
+		result, err := await(k.key.Call("solve_parts_gpu", packKernelFields(witness)))
+		if err != nil {
+			return kernelParts{}, true, err
+		}
+		parts, err := unpackKernelParts(result)
+		return parts, true, err
 	}
 	parts, err := unpackKernelParts(k.key.Call("solve_parts", packKernelFields(witness)))
 	return parts, true, err
