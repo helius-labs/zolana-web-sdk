@@ -68,9 +68,12 @@ async function prove(body: string): Promise<ProofValue> {
   try {
     return await prover.prove(body);
   } catch (error) {
-    if (error !== "unverified") throw error;
-    // A GPU whose arithmetic went wrong: the CPU proves from now on.
-    if (!prover.has_gpu()) throw new WasmProverError("wasm_verify_failed");
+    // A GPU that failed, or whose arithmetic went wrong: the CPU proves
+    // from now on.
+    if (!prover.has_gpu()) {
+      if (error === "unverified") throw new WasmProverError("wasm_verify_failed");
+      throw error;
+    }
     prover.drop_gpu();
     try {
       return await prover.prove(body);
