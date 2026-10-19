@@ -17,7 +17,7 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5178,
     strictPort: true,
-    // Required for Mopro's shared-memory Rayon arithmetic workers.
+    // Required for the prover runtime's shared-memory thread pool.
     headers: isolationHeaders,
   },
   preview: { host: "127.0.0.1", headers: isolationHeaders },

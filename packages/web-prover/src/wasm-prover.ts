@@ -1,19 +1,19 @@
 /**
  * Local proving in the browser, wired into the SDK without patching it.
  *
- * `ProverClient` takes an injectable `fetch`, and the wasm module's `prove`
+ * `ProverClient` takes an injectable `fetch`, and the runtime's `prove`
  * accepts and returns exactly the JSON a `POST /prove/<key>` exchange uses (it mirrors
  * `server.processProofSync`). So the whole integration is a `fetch` that
  * recognizes the prover URL and answers it from wasm instead of the network.
  * Everything else -- indexer calls, Solana RPC -- falls through untouched.
  *
- * Mopro supplies the threaded Rust arithmetic kernel; Zolana retains its
- * native witness and proof formats.
+ * The runtime is zopro-prover built for the browser: Zolana's request and
+ * proof formats, gnark's keys repacked as zopro key files.
  */
 
 import { abortable } from "./abortable.js";
 import type { KeyProgress, Measurement } from "./measurement.js";
-import { operationError, WasmProverError } from "./errors.js";
+import { operationError, WasmProverError, workerError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
 import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "./key-digests.js";
 import { automaticProvingThreads } from "./proving-threads.js";
@@ -22,20 +22,20 @@ import { type ShapeKey } from "./shapes.js";
 
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
 export type WorkerRequest =
-  | Readonly<{ id: number; kind: "init"; wasmUrl: string; threads: number }>
+  | Readonly<{ id: number; kind: "init"; runtimeUrl: string; threads: number }>
   | Readonly<{
       id: number;
       kind: "loadKey";
       fileName: string;
+      /** The pinned key file, or the raw form of an earlier load. */
       key: ArrayBuffer;
-      /** The pinned key file's sha256, which proofs report. */
-      sha256: string;
-      /** Ask for the raw re-encoding back, to cache. */
+      /** The gnark proving key's sha256 the key file was built from, which proofs report. */
+      keySha256: string;
+      /** Ask for the raw form back, to cache. */
       exportRaw: boolean;
     }>
   | Readonly<{ id: number; kind: "prove"; body: string }>
-  | Readonly<{ id: number; kind: "loadedKeys" }>
-  | Readonly<{ id: number; kind: "verify"; body: string; proof: string }>;
+  | Readonly<{ id: number; kind: "loadedKeys" }>;
 
 /**
  * `Omit` over a union collapses to the union's common keys, which would erase
@@ -56,9 +56,12 @@ export type WorkerResponse = Readonly<{
 }>;
 
 export interface WasmProverOptions {
-  /** URL of `zolana-prover.wasm`, as installed by `zolana-prover-assets`. */
-  readonly wasmUrl: string;
-  /** Omit to choose automatically; zero selects the original Go prover. */
+  /**
+   * URL of the directory holding the prover runtime (`zopro_prover.js`, its
+   * wasm and `snippets/`), as installed by `zolana-prover-assets`.
+   */
+  readonly runtimeUrl: string;
+  /** Threads of the proving pool, at least one; omit to choose automatically. */
   readonly threads?: number;
   /**
    * Where proving keys are fetched from. Omit it to use the pinned key set on
@@ -85,12 +88,12 @@ export interface WasmProverOptions {
 /**
  * Owns the worker, the key cache, and the `fetch` shim.
  *
- * Proving keys are cached in the Cache API rather than memory: they are 9-380 MB
+ * Proving keys are cached in the Cache API rather than memory: they are 7-150 MB
  * each and immutable (the lockfile pins their sha256 and the CloudFront prefix
  * is version-hashed), so re-downloading one per page load is pure waste. After
- * a shape's first load the cache keeps the bridge's raw re-encoding instead of
- * the pinned file: the pinned file's compressed points take about 240 ms per MB
- * to decompress in wasm on every load, and the raw form skips that.
+ * a shape's first load the cache keeps the runtime's raw form instead of the
+ * pinned file: the pinned file's compressed points take seconds to decompress
+ * in wasm on every load, and the raw form skips that and the solver's build.
  */
 export class WasmProver {
   #worker: Worker | undefined;
@@ -112,7 +115,7 @@ export class WasmProver {
     const next = this.#queue.then(async () => {
       signal.throwIfAborted();
       // A queued cancellation must not interrupt another request. Once active,
-      // terminating the runtime is the only way to stop synchronous Go/Rust work.
+      // terminating the runtime is the only way to stop its synchronous work.
       const abort = () => {
         if (!lifetime.aborted) this.#fail(signal.reason);
       };
@@ -141,11 +144,10 @@ export class WasmProver {
   }
 
   /**
-   * Starts the worker and instantiates the module.
+   * Starts the worker and instantiates the runtime.
    *
-   * The module must run in a worker: Go's js/wasm runtime shares the thread it
-   * is instantiated on, and `groth16.Prove` blocks for seconds, so on the main
-   * thread it would freeze the page for the whole proof.
+   * The runtime must run in a worker: a proof blocks its thread for seconds,
+   * so on the main thread it would freeze the page for the whole proof.
    */
   start(source: Worker | (() => Worker) | undefined = this.#factory): Promise<void> {
     if (this.#initialization !== undefined) return this.#initialization;
@@ -182,7 +184,7 @@ export class WasmProver {
     });
     const initialization = this.#call({
       kind: "init",
-      wasmUrl: this.#options.wasmUrl,
+      runtimeUrl: this.#options.runtimeUrl,
       threads: this.#options.threads ?? automaticProvingThreads(),
     })
       .then((ready) => {
@@ -192,15 +194,14 @@ export class WasmProver {
           typeof value !== "object" ||
           value === null ||
           !("threads" in value) ||
-          typeof value.threads !== "number"
+          typeof value.threads !== "number" ||
+          !("rawKeyFormat" in value) ||
+          typeof value.rawKeyFormat !== "string"
         ) {
           throw new WasmProverError("wasm_invalid_response");
         }
         this.#threads = value.threads;
-        this.#rawKeyFormat =
-          "rawKeyFormat" in value && typeof value.rawKeyFormat === "string"
-            ? value.rawKeyFormat
-            : undefined;
+        this.#rawKeyFormat = value.rawKeyFormat;
       })
       .catch((error: unknown) => {
         if (this.#worker === worker || this.#initialization === initialization) this.#fail(error);
@@ -317,7 +318,7 @@ export class WasmProver {
       response = await this.#installKey(shape, key, expected, cache);
     } catch (error) {
       if (!key.raw) throw error;
-      // A raw entry the bridge no longer accepts is rebuilt from the pinned key.
+      // A raw entry the runtime no longer accepts is rebuilt from the pinned key.
       signal.throwIfAborted();
       await optionalCache(() => cache?.delete(rawKeyUrl(url)), signal);
       key = await this.#pinnedKey(cache, url, expected, signal, downloaded);
@@ -326,18 +327,16 @@ export class WasmProver {
     }
     signal.throwIfAborted();
     const info = response.value as
-      | Readonly<{ key?: string; nbPublic?: number; nbSecret?: number; raw?: unknown }>
+      | Readonly<{ key?: string; inputs?: number; outputs?: number; raw?: unknown }>
       | undefined;
     this.#options.onMeasurement?.({
       step: "key-load",
       ms: response.ms,
       bytes: shape.keyBytes,
-      // The constraint system's variable count is what a witness-size mismatch is
-      // measured against, so it belongs next to the key that supplied it.
       note:
-        info?.nbPublic === undefined
+        info?.key === undefined
           ? shape.keyFile
-          : `${shape.keyFile} as ${String(info.key)} nbPublic=${String(info.nbPublic)} nbSecret=${String(info.nbSecret)}`,
+          : `${shape.keyFile} as ${info.key} ${String(info.inputs)}x${String(info.outputs)}`,
     });
     signal.throwIfAborted();
     const raw = info?.raw;
@@ -353,8 +352,11 @@ export class WasmProver {
     this.#loaded.add(shape.keyFile);
   }
 
+  /** The URL of the shape's zopro key file. */
   #keyUrl(shape: ShapeKey): string {
-    return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${shape.keyFile}`;
+    const file = KEY_DIGESTS[shape.keyFile]?.file;
+    if (file === undefined) throw new WasmProverError("wasm_key_manifest_error");
+    return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${file}`;
   }
 
   /**
@@ -388,7 +390,7 @@ export class WasmProver {
         kind: "loadKey",
         fileName: shape.keyFile,
         key: key.bytes,
-        sha256: expected.sha256,
+        keySha256: expected.keySha256,
         exportRaw,
       },
       [key.bytes],
@@ -396,8 +398,8 @@ export class WasmProver {
   }
 
   /**
-   * The raw re-encoding cached by an earlier load, if it was derived from this
-   * pinned key by a bridge writing the same format and is intact.
+   * The raw form cached by an earlier load, if it was derived from this
+   * pinned key by a runtime writing the same format and is intact.
    */
   async #cachedRawKey(
     cache: Cache | undefined,
@@ -419,7 +421,7 @@ export class WasmProver {
       if (bytes !== undefined && (await abortable(sha256Hex(bytes), signal)) === digest)
         return { bytes, raw: true, source: "cache" };
     }
-    // Derived from another key set or by another bridge, or damaged.
+    // Derived from another key set or by another runtime, or damaged.
     await optionalCache(() => cache.delete(rawKeyUrl(url)), signal);
     return undefined;
   }
@@ -482,7 +484,7 @@ export class WasmProver {
 
   /**
    * A `fetch` for `ZolanaClientConfig.fetch`. Proof requests to `/prove/<key>`
-   * are answered from wasm, other paths below `/prove` are refused, and
+   * are answered by the runtime, other paths below `/prove` are refused, and
    * everything else is delegated, so one shim covers the client.
    */
   createFetch(): typeof globalThis.fetch {
@@ -534,26 +536,25 @@ export class WasmProver {
       if (shape === undefined) throw new WasmProverError("wasm_invalid_request");
       await this.#loadKey(shape, active);
       active.throwIfAborted();
+      // The runtime verifies the proof before it returns it.
       const response = await this.#call({ kind: "prove", body });
-      if (typeof response.value !== "string") throw new WasmProverError("wasm_invalid_response");
-      const proof = response.value;
-      active.throwIfAborted();
-      const verified = await this.#call({ kind: "verify", body, proof });
+      const value = response.value;
       if (
-        typeof verified.value !== "object" ||
-        verified.value === null ||
-        !("valid" in verified.value) ||
-        verified.value.valid !== true
-      ) {
-        throw new WasmProverError("wasm_verify_failed");
-      }
+        typeof value !== "object" ||
+        value === null ||
+        !("proof" in value) ||
+        typeof value.proof !== "string" ||
+        !("verifyMs" in value) ||
+        typeof value.verifyMs !== "number"
+      )
+        throw new WasmProverError("wasm_invalid_response");
       active.throwIfAborted();
       this.#options.onMeasurement?.({
         step: "transfer-prove",
         ms: response.ms,
-        note: `Mopro proof, ${String(this.#threads)} arithmetic workers; locally verified`,
+        note: `zopro proof, ${String(this.#threads)} threads; locally verified`,
       });
-      return { proof, proveMs: response.ms, verifyMs: verified.ms };
+      return { proof: value.proof, proveMs: response.ms - value.verifyMs, verifyMs: value.verifyMs };
     }, signal);
   }
 
@@ -610,7 +611,7 @@ export class WasmProver {
         this.#fail(new WasmProverError("wasm_worker_failed"));
       }
     });
-    if (!response.ok) throw operationError(request.kind);
+    if (!response.ok) throw workerError(request.kind, response.error);
     return response;
   }
 }
@@ -652,10 +653,12 @@ function rawKeyUrl(url: string): string {
 
 type KeyBytes = Readonly<{ bytes: ArrayBuffer; raw: boolean; source: "cache" | "network" }>;
 
-/** One entry of `KEY_DIGESTS`, copied from `proving-keys.lock`. */
+/** One entry of `KEY_DIGESTS`, copied from `zopro-keys.lock`. */
 export interface KeyDigest {
   readonly size: number;
   readonly sha256: string;
+  /** The gnark proving key the file was built from. */
+  readonly keySha256: string;
 }
 
 /** Reads a key body, reporting bytes as they arrive and stopping past the pinned size. */

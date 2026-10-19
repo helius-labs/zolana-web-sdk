@@ -1,6 +1,10 @@
 #!/usr/bin/env node
+// Installs the prover runtime the package bundles (dist/runtime, each file
+// checked against its manifest) under <public>/prover, the sample requests
+// under <public>/fixtures, and the selected zopro keys under <public>/keys,
+// each downloaded key checked against zopro-keys.lock.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,24 +26,19 @@ for (let index = 0; index < argumentsList.length; index += 2) {
   }
   argumentsMap.set(flag, value);
 }
-const standalone = argumentsMap.has("--output");
-const publicDirectory = standalone
+const publicDirectory = argumentsMap.has("--output")
   ? resolve(argumentsMap.get("--output"))
   : join(root, "examples/browser/public");
-const runtimeLock = JSON.parse(await readFile(join(root, "runtime.lock.json"), "utf8"));
-const provingKeysLock = JSON.parse(
-  await readFile(join(root, "wasm/prover/provingkeys/proving-keys.lock"), "utf8"),
-);
+const keysLock = JSON.parse(await readFile(join(root, "zopro-keys.lock"), "utf8"));
 // `none` installs the runtime only, for an app that loads keys from the key CDN.
 const keysArgument = argumentsMap.get("--keys");
 const selectedKeys =
   keysArgument === "none"
     ? []
     : keysArgument === undefined
-      ? runtimeLock.requiredKeys
+      ? ["transfer_confidential_2_2.key"]
       : keysArgument.split(",");
 if (
-  !Array.isArray(selectedKeys) ||
   (selectedKeys.length === 0 && keysArgument !== "none") ||
   new Set(selectedKeys).size !== selectedKeys.length
 ) {
@@ -49,88 +48,53 @@ for (const name of selectedKeys) {
   if (
     typeof name !== "string" ||
     !/^(transfer_confidential_\d+_\d+|merge_\d+_1)\.key$/.test(name) ||
-    !Object.hasOwn(provingKeysLock.keys, name)
+    !Object.hasOwn(keysLock.keys, name) ||
+    !/^[a-z0-9_]+\.zopro$/.test(keysLock.keys[name].file)
   ) {
-    throw new Error(
-      "Unsupported proving-key name; select a browser key from the pinned proving-keys lockfile",
-    );
+    throw new Error("Unsupported proving-key name; select a browser key from the pinned zopro-keys.lock");
   }
 }
-const bridgeDirectory = join(root, "dist/bridge");
-// The request fixture follows the circuits the bridge is built from, so it
-// replaces the release copy just as the rebuilt Go bridge does.
-const bridgeDestinations = new Map([
-  ["zolana-prover.wasm", "examples/browser/public/prover/zolana-prover.wasm"],
-  ["wasm_exec.js", "packages/web-prover/src/vendor/wasm_exec.js"],
-  ["transfer-2x2.json", "examples/browser/public/fixtures/transfer-2x2.json"],
-]);
-const bridgeManifest = JSON.parse(await readFile(join(bridgeDirectory, "manifest.json"), "utf8"));
-if (
-  bridgeManifest.format !== 1 ||
-  !Array.isArray(bridgeManifest.files) ||
-  bridgeManifest.files.length !== bridgeDestinations.size
-)
-  throw new Error("Rebuilt Go bridge is missing; run npm run build:prover");
-const bridgeFiles = new Map();
-for (const entry of bridgeManifest.files) {
-  if (bridgeDestinations.get(entry.asset) !== entry.destination) {
-    throw new Error("Invalid rebuilt Go bridge manifest");
-  }
-  const bytes = await readFile(join(bridgeDirectory, entry.asset));
-  verifyBytes(entry.asset, bytes, entry);
-  bridgeFiles.set(entry.destination, { entry, bytes });
-}
-if (bridgeFiles.size !== bridgeDestinations.size) {
-  throw new Error("Incomplete rebuilt Go bridge manifest");
-}
 
-if (runtimeLock.format !== 1 || !/^\d+\.\d+\.\d+$/.test(runtimeLock.version)) {
-  throw new Error("runtime.lock.json has an unsupported format or version");
+const runtimeDirectory = join(root, "dist/runtime");
+let manifest;
+try {
+  manifest = JSON.parse(await readFile(join(runtimeDirectory, "manifest.json"), "utf8"));
+} catch {
+  throw new Error("The prover runtime is missing; run npm run build:prover");
 }
-
-const runtimeBaseUrl = process.env.ZOLANA_RUNTIME_BASE_URL || runtimeLock.baseUrl;
-const provingKeysBaseUrl = process.env.ZOLANA_KEYS_BASE_URL || runtimeLock.provingKeysBaseUrl;
-const manifestBytes = await loadAsset(runtimeBaseUrl, runtimeLock.manifest.asset);
-verifyBytes(runtimeLock.manifest.asset, manifestBytes, runtimeLock.manifest);
-
-const runtimeManifest = JSON.parse(manifestBytes.toString("utf8"));
-if (runtimeManifest.format !== 1 || runtimeManifest.version !== runtimeLock.version) {
-  throw new Error("Runtime manifest does not match runtime.lock.json");
+if (manifest.format !== 2 || !Array.isArray(manifest.files) || manifest.files.length === 0)
+  throw new Error("Invalid prover runtime manifest");
+const runtime = [];
+for (const entry of manifest.files) {
+  const destination = checkedDestination(join(publicDirectory, "prover"), entry.path);
+  const bytes = await readFile(join(runtimeDirectory, entry.path));
+  verifyBytes(entry.path, bytes, entry);
+  runtime.push({ destination, entry, bytes });
 }
-if (!Array.isArray(runtimeManifest.files) || runtimeManifest.files.length === 0) {
-  throw new Error("Runtime manifest does not contain any files");
-}
+if (!runtime.some(({ entry }) => entry.path === "zopro_prover.js"))
+  throw new Error("Invalid prover runtime manifest");
 
 const shown = (path) => relative(process.cwd(), path) || ".";
-
-for (const entry of runtimeManifest.files) {
-  // The rebuilt bridge brings its own request fixture; a release's is for older circuits.
-  if (bridgeFiles.has(entry.destination) || entry.destination.startsWith("examples/browser/public/fixtures/")) continue;
-  const destination = checkedDestination(entry.destination);
-  if (destination === undefined) continue;
-  if (await existingFileMatches(destination, entry)) {
-    console.log(`Using ${shown(destination)}`);
-    continue;
-  }
-  const bytes = await loadAsset(runtimeBaseUrl, entry.asset);
-  verifyBytes(entry.asset, bytes, entry);
-  await writeAtomically(destination, bytes);
-  console.log(`Installed ${shown(destination)}`);
-}
-
-for (const [name, { entry, bytes }] of bridgeFiles) {
-  const destination = checkedDestination(name);
-  if (destination === undefined) continue;
+for (const { destination, entry, bytes } of runtime) {
   if (!(await existingFileMatches(destination, entry))) await writeAtomically(destination, bytes);
-  console.log(`Using rebuilt Go bridge: ${shown(destination)}`);
+}
+console.log(`Installed prover runtime from zopro ${manifest.zoproRevision} in ${shown(join(publicDirectory, "prover"))}`);
+
+// Sample requests: every fixture of the source tree, the 2x2 one in the package.
+for (const name of await readdir(join(root, "fixtures"))) {
+  if (!/^[a-z0-9-]+\.json$/.test(name)) continue;
+  const destination = join(publicDirectory, "fixtures", name);
+  const bytes = await readFile(join(root, "fixtures", name));
+  await writeAtomically(destination, bytes);
 }
 
+const keysBaseUrl = process.env.ZOLANA_KEYS_BASE_URL || keysLock.baseUrl;
 for (const name of selectedKeys) {
-  const entry = provingKeysLock.keys[name];
-  const destination = join(publicDirectory, "keys", name);
+  const entry = keysLock.keys[name];
+  const destination = join(publicDirectory, "keys", entry.file);
   if (!(await existingFileMatches(destination, entry))) {
-    const bytes = await loadAsset(provingKeysBaseUrl, name);
-    verifyBytes(name, bytes, entry);
+    const bytes = await loadAsset(keysBaseUrl, entry.file);
+    verifyBytes(entry.file, bytes, entry);
     await writeAtomically(destination, bytes);
     console.log(`Installed ${shown(destination)}`);
   } else {
@@ -138,35 +102,24 @@ for (const name of selectedKeys) {
   }
 }
 
-console.log(`Ready to prove with runtime ${runtimeLock.version}.`);
+console.log("Ready to prove.");
 
-function checkedDestination(value) {
-  if (typeof value !== "string" || value.includes("\\") || value.split("/").includes("..")) {
-    throw new Error(`Unsafe runtime destination: ${value}`);
+function checkedDestination(directory, path) {
+  if (
+    typeof path !== "string" ||
+    path.includes("\\") ||
+    path.startsWith("/") ||
+    path.split("/").some((part) => part === ".." || part === "")
+  ) {
+    throw new Error(`Unsafe runtime path: ${path}`);
   }
-  const allowed = [
-    "examples/browser/public/prover/",
-    "examples/browser/public/fixtures/",
-    "packages/web-prover/src/vendor/",
-  ];
-  if (!allowed.some((prefix) => value.startsWith(prefix))) {
-    throw new Error(`Runtime destination is outside generated asset directories: ${value}`);
-  }
-  if (standalone) {
-    if (value.startsWith("packages/web-prover/src/vendor/")) return undefined;
-    return resolve(publicDirectory, value.slice("examples/browser/public/".length));
-  }
-  const destination = resolve(root, value);
-  const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
-  if (!destination.startsWith(rootPrefix)) throw new Error(`Unsafe runtime destination: ${value}`);
+  const destination = resolve(directory, path);
+  if (!destination.startsWith(`${directory}${sep}`)) throw new Error(`Unsafe runtime path: ${path}`);
   return destination;
 }
 
 async function loadAsset(baseUrl, name) {
-  if (typeof name !== "string" || !/^[A-Za-z0-9._-]+$/.test(name)) {
-    throw new Error(`Unsafe release asset name: ${name}`);
-  }
-  const url = new URL(encodeURIComponent(name), ensureTrailingSlash(baseUrl));
+  const url = new URL(encodeURIComponent(name), baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
   if (url.protocol === "file:") return readFile(fileURLToPath(url));
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error(`Unsupported asset URL protocol: ${url.protocol}`);
@@ -175,10 +128,6 @@ async function loadAsset(baseUrl, name) {
   const response = await fetch(url, { redirect: "follow" });
   if (!response.ok) throw new Error(`Cannot download ${name}: HTTP ${response.status}`);
   return Buffer.from(await response.arrayBuffer());
-}
-
-function ensureTrailingSlash(value) {
-  return value.endsWith("/") ? value : `${value}/`;
 }
 
 function verifyBytes(name, bytes, expected) {

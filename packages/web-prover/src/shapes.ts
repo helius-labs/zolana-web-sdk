@@ -5,7 +5,7 @@
  * `prover-test/spp/protocol/shape.go`, and the on-chain verifier -- cheapest
  * first, so the order doubles as the smallest-fit search order.
  *
- * Key sizes come from `key-digests.ts`, generated from `proving-keys.lock`, which
+ * Key sizes come from `key-digests.ts`, generated from `zopro-keys.lock`, which
  * is also what a downloaded key is validated against.
  */
 
@@ -19,9 +19,9 @@ export interface Shape {
 export interface ShapeKey extends Shape {
   /** `<in>x<out>`, the label used in the UI and benchmark tables. */
   readonly label: string;
-  /** Proving-key file name, matching the CloudFront/S3 object name. */
+  /** The gnark proving key's file name, which names the circuit and its zopro key. */
   readonly keyFile: string;
-  /** Proving-key size in bytes, from the pinned lockfile. */
+  /** The zopro key file's size in bytes, from the pinned lockfile. */
   readonly keyBytes: number;
 }
 

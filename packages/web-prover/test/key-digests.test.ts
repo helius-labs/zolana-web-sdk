@@ -3,7 +3,7 @@ import { lockedBrowserKeys, lockedKeyBaseUrl, lockedKeySet } from "../scripts/ge
 import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "../src/key-digests.js";
 import { MERGE_SHAPES, TRANSFER_SHAPES } from "../src/shapes.js";
 
-it("matches proving-keys.lock (run scripts/generate-key-digests.ts after a rotation)", async () => {
+it("matches zopro-keys.lock (run scripts/generate-key-digests.ts after a rotation)", async () => {
   expect(KEY_DIGESTS).toEqual(await lockedBrowserKeys());
   expect(KEY_SET).toBe(await lockedKeySet());
   expect(KEY_BASE_URL).toBe(await lockedKeyBaseUrl());

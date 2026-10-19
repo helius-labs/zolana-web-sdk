@@ -1,18 +1,18 @@
 # Upstream
 
-`upstream.lock.json` pins the published `@heliuslabs/zolana` release the browser example depends on and the `helius-labs/zolana` tag `wasm` follows, the commit that release was cut from, so the bridge accepts that SDK's `/prove` requests and proves with the keys pinned in `wasm/prover/provingkeys/proving-keys.lock`. A new SDK release re-pins both together. `scripts/check-upstream.sh` (CI job `upstream`) fails when anything below drifts from that pin.
+`upstream.lock.json` pins the published `@heliuslabs/zolana` release the examples depend on and the `helius-labs/zolana` tag it was cut from. The prover's keys are zopro keys built from the gnark proving keys that release pins (`prover/server/prover/provingkeys/proving-keys.lock` at the tag), so the runtime proves that SDK's `/prove` requests and its proofs report the gnark key's sha256 the SDK expects. A new SDK release re-pins both together and rebuilds the keys. `scripts/check-upstream.sh` (CI job `upstream`) fails when anything below drifts from that pin:
+
+- every confidential transfer and merge key upstream pins has a zopro key in `zopro-keys.lock`, built from the gnark key upstream pins (`key_sha256`), in the same key set and CDN folder;
+- `shapes.ts` lists exactly the locked keys;
+- the browser example depends on the pinned SDK, and the installed SDK's `PROVING_KEY_SHA256S` match the gnark keys the zopro keys were built from.
+
+To rebuild the keys after a rotation, run zopro's `tools/gnark/build-keys.sh` with upstream's gnark lockfile, publish the `.zopro` files in the key set's CDN folder, copy the `zopro-keys.lock` it writes here and run `npm run generate:keys --workspace @heliuslabs/zolana-web-prover`.
+
+The runtime is zopro-prover at the revision `runtime.lock.json` pins (`scripts/build-runtime.sh`).
 
 Source mapping:
 
 - `poc/core` -> `packages/web-prover` (from branch `feat/mopro-browser-arkworks` at `87e9463b0d5b9527282ff7d77687258c92bb696e`)
 - `poc/web` -> `examples/browser` (same branch and commit)
-- `prover/server/cmd/prover-wasm` -> `wasm/prover-wasm` (same branch and commit, ported to the circuits above)
-- `prover/server/go.mod`, `go.sum`, the packages `prover-wasm` imports and the packages their tests import -> `wasm`, leaving out files built only with the `aeglos` tag and the `prover/backend` GPU docs and source lock
 
-Local changes to preserve when re-extracting:
-
-- `common.FromHex` returns a fixed error that does not echo its input; `marshal_local_test.go` covers it.
-- Go tests read cross-language vectors from `wasm/test-vectors`, copied from the upstream root `test-vectors` and, for `indexed-proof.json`, `sdk-libs/fixtures`.
-- `wasm/circuits/spp_transaction/shared/web_fixture_test.go` is not upstream. It writes `wasm/prover-wasm/testdata/transfer-2x2.json`, a deterministic satisfying 2x2 request built with upstream's test helpers: `WEB_FIXTURE=$PWD/prover-wasm/testdata/transfer-2x2.json go test ./circuits/spp_transaction/shared -run TestWriteWebFixture` from `wasm`.
-
-The standalone package name, worker factory, workspace scripts, import paths, and asset staging paths are maintained here.
+`fixtures/` holds valid requests for each benchmarked shape on trees of their own; the mobile SDK's `tools/prove-fixtures` wrote them.

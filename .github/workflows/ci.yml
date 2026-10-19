@@ -17,10 +17,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - uses: actions/setup-go@v7
+      # The prover runtime builds from the zopro revision runtime.lock.json pins.
+      - uses: dtolnay/rust-toolchain@master
         with:
-          go-version: 1.27.1
-          cache-dependency-path: wasm/go.sum
+          toolchain: nightly-2025-11-15
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: npm ci
       - run: npm run setup
       - run: npm run check
@@ -41,10 +44,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - uses: actions/setup-go@v7
+      # The prover runtime builds from the zopro revision runtime.lock.json pins.
+      - uses: dtolnay/rust-toolchain@master
         with:
-          go-version: 1.27.1
-          cache-dependency-path: wasm/go.sum
+          toolchain: nightly-2025-11-15
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: npm ci
       - run: npm run setup
       - run: npm run build:example

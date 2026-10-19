@@ -1,157 +1,106 @@
 /// <reference lib="webworker" />
 /**
- * Hosts the Go wasm proving instance off the main thread.
+ * Hosts the prover runtime off the main thread.
  *
- * Mopro runs FFTs and MSMs on a Rayon worker pool. Go's
- * js/wasm runtime occupies whichever thread instantiated it, so this has to be a
- * worker. Every operation is timed here rather than on the page so the reported
- * proving cost excludes postMessage and structured-clone overhead.
+ * The runtime is zopro-prover built for the browser: one WebAssembly module
+ * that loads a key, builds the witness, proves on a thread pool (and WebGPU
+ * where the page has it) and verifies the proof before it returns it. A
+ * proof takes seconds, so this is a worker. Every operation is timed here
+ * rather than on the page so the reported proving cost excludes postMessage
+ * and structured-clone overhead.
  */
 
-// The Go runtime shim, vendored here by scripts/build-wasm.sh from the same
-// toolchain that built the .wasm (its js/wasm ABI is not stable across Go
-// releases, so the two must ship together).
-//
-// A static import rather than a runtime load, because the alternatives are all
-// worse: `importScripts` is present in a module worker but throws when called,
-// and Vite refuses to `import()` a path under public/. Bundling it means
-// `globalThis.Go` is assigned before init() runs.
-import "./vendor/wasm_exec.js";
-
-import type { WorkerRequest, WorkerResponse, WorkerFatal } from "./wasm-prover.js";
+import type { WorkerRequest, WorkerResponse } from "./wasm-prover.js";
 import { operationError, WasmProverError } from "./errors.js";
+import { importRuntime, type ProofValue, type Runtime, type WebProver } from "./runtime.js";
 
-/** The API `wasm/prover-wasm` installs on `globalThis`. */
-interface ZolanaProverApi {
-  loadKey(fileName: string, key: Uint8Array, sha256?: string, exportRaw?: boolean): unknown;
-  prove(requestJson: string): unknown;
-  /** prove, waiting on the kernel's GPU; absent from older bridges. */
-  proveAsync?(requestJson: string): Promise<unknown>;
-  loadedKeys(): unknown;
-  verify(requestJson: string, proofJson: string): unknown;
-  /** Absent from bridges that cannot load or export a raw key. */
-  rawKeyFormat?: string;
-}
-
-declare const __zolanaProver: ZolanaProverApi | undefined;
-
-interface GoRuntime {
-  importObject: WebAssembly.Imports;
-  run(instance: WebAssembly.Instance): Promise<void>;
-}
-
-let api: ZolanaProverApi | undefined;
+let runtime: Runtime | undefined;
 let activeThreads = 0;
+let loaded: { fileName: string; prover: WebProver } | undefined;
 
-async function init(wasmUrl: string, threads: number): Promise<void> {
-  if (api !== undefined) return;
-
-  if (!Number.isInteger(threads) || threads < 0 || threads > 64) {
-    throw new Error("Threads must be an integer between 0 and 64");
+async function init(runtimeUrl: string, threads: number): Promise<void> {
+  if (runtime !== undefined) return;
+  if (!Number.isInteger(threads) || threads < 1 || threads > 64) {
+    throw new Error("Threads must be an integer between 1 and 64");
   }
-  if (threads > 0) {
-    if (!globalThis.crossOriginIsolated)
-      throw new Error(
-        "Threaded proving requires cross-origin isolation. Use the Vite server with COOP/COEP headers.",
-      );
-    const kernelUrl = new URL("./accelerator/gnark_kernel.js", new URL(wasmUrl, self.location.href))
-      .href;
-    const kernel = await import(/* @vite-ignore */ kernelUrl);
-    await kernel.default();
-    await kernel.initThreadPool(threads);
-    // WebGPU, where the page has it: keys loaded after this prove their MSMs
-    // and quotient on the GPU (the kernel falls back to the CPU without it).
-    if (typeof kernel.init_gpu === "function" && "gpu" in navigator) await kernel.init_gpu();
-    Object.assign(globalThis, { __moproGnarkKernel: kernel.Key });
-    // A runtime with point decompression lends it to the Go bridge for key loads.
-    if (typeof kernel.decompress_g1 === "function" && typeof kernel.decompress_g2 === "function")
-      Object.assign(globalThis, {
-        __moproGnarkDecompress: { g1: kernel.decompress_g1, g2: kernel.decompress_g2 },
-      });
-    activeThreads = threads;
-  }
-
-  let rejectReady: (error: Error) => void = () => {};
-  const ready = new Promise<void>((resolve, reject) => {
-    rejectReady = reject;
-    (globalThis as unknown as { __zolanaProverReady: () => void }).__zolanaProverReady = resolve;
-  });
-
-  const GoCtor = (globalThis as unknown as { Go?: new () => GoRuntime }).Go;
-  if (GoCtor === undefined) {
-    throw new Error("the vendored wasm_exec.js did not define globalThis.Go");
-  }
-  const go = new GoCtor();
-
-  const response = await fetch(wasmUrl);
-  if (!response.ok) {
-    throw new Error(`fetching ${wasmUrl} failed: ${String(response.status)}`);
-  }
-  const { instance } = await WebAssembly.instantiateStreaming(response, go.importObject);
-
-  // Deliberately not awaited: the Go main blocks forever to keep its exported
-  // callbacks alive, so this promise only settles when the instance dies.
-  const exited = () => {
-    api = undefined;
-    const error = new WasmProverError("wasm_worker_failed");
-    rejectReady(error);
-    const response: WorkerFatal = { fatal: true, error: error.code };
-    self.postMessage(response);
-  };
-  void go.run(instance).then(exited, exited);
-
-  await ready;
-  if (typeof __zolanaProver === "undefined") {
-    throw new Error("prover module ran but did not install __zolanaProver");
-  }
-  api = __zolanaProver;
+  if (!globalThis.crossOriginIsolated)
+    throw new Error(
+      "Proving requires cross-origin isolation. Use the Vite server with COOP/COEP headers.",
+    );
+  const module = await importRuntime(runtimeUrl);
+  await module.default();
+  await module.initThreadPool(threads);
+  if ("gpu" in navigator) await module.init_gpu();
+  runtime = module;
+  activeThreads = threads;
 }
 
-function requireApi(): ZolanaProverApi {
-  if (api === undefined) throw new Error("prover module is not initialized; send init first");
-  return api;
+function requireRuntime(): Runtime {
+  if (runtime === undefined) throw new Error("the runtime is not initialized; send init first");
+  return runtime;
 }
 
-/**
- * The wasm side returns `{ error }` on failure instead of throwing, so a bad
- * request cannot tear down the instance. Unwrap that into the worker protocol.
- */
-function unwrap(result: unknown): unknown {
-  if (typeof result === "object" && result !== null && "error" in result) {
-    throw new WasmProverError();
+function loadKey(
+  fileName: string,
+  key: Uint8Array,
+  keySha256: string,
+  exportRaw: boolean,
+): { key: string; inputs: number; outputs: number; raw?: Uint8Array } {
+  const { WebProver } = requireRuntime();
+  // One key at a time: its points are most of the wasm heap.
+  loaded?.prover.free();
+  loaded = undefined;
+  const prover = new WebProver(key);
+  if (prover.digest() !== keySha256) {
+    prover.free();
+    throw new WasmProverError("wasm_key_digest_mismatch");
   }
-  return result;
+  loaded = { fileName, prover };
+  const info = { key: prover.name(), inputs: prover.inputs(), outputs: prover.outputs() };
+  if (!exportRaw) return info;
+  const raw = prover.export_raw();
+  return raw.byteLength === 0 ? info : { ...info, raw };
+}
+
+async function prove(body: string): Promise<ProofValue> {
+  if (loaded === undefined) throw new Error("no key is loaded");
+  const { prover } = loaded;
+  try {
+    return await prover.prove(body);
+  } catch (error) {
+    if (error !== "unverified") throw error;
+    // A GPU whose arithmetic went wrong: the CPU proves from now on.
+    if (!prover.has_gpu()) throw new WasmProverError("wasm_verify_failed");
+    prover.drop_gpu();
+    try {
+      return await prover.prove(body);
+    } catch (retried) {
+      if (retried === "unverified") throw new WasmProverError("wasm_verify_failed");
+      throw retried;
+    }
+  }
 }
 
 async function handle(request: WorkerRequest): Promise<unknown> {
   switch (request.kind) {
     case "init":
-      await init(request.wasmUrl, request.threads);
-      return { initialized: true, threads: activeThreads, rawKeyFormat: requireApi().rawKeyFormat };
-    case "loadKey": {
-      const bridge = requireApi();
-      const key = new Uint8Array(request.key);
-      // A bridge installed before raw keys takes (fileName, key) and hashes the key
-      // itself; the page never asks it for a raw key.
-      return unwrap(
-        bridge.rawKeyFormat === undefined
-          ? bridge.loadKey(request.fileName, key)
-          : bridge.loadKey(request.fileName, key, request.sha256, request.exportRaw),
+      await init(request.runtimeUrl, request.threads);
+      return {
+        initialized: true,
+        threads: activeThreads,
+        rawKeyFormat: requireRuntime().raw_format(),
+      };
+    case "loadKey":
+      return loadKey(
+        request.fileName,
+        new Uint8Array(request.key),
+        request.keySha256,
+        request.exportRaw,
       );
-    }
-    case "prove": {
-      const bridge = requireApi();
-      const result = unwrap(
-        bridge.proveAsync ? await bridge.proveAsync(request.body) : bridge.prove(request.body),
-      ) as { proof?: unknown };
-      // The page rebuilds an HTTP response from this, so hand back the exact
-      // JSON string the prover server would have sent.
-      return result.proof;
-    }
-    case "verify":
-      return unwrap(requireApi().verify(request.body, request.proof));
+    case "prove":
+      return await prove(request.body);
     case "loadedKeys":
-      return unwrap(requireApi().loadedKeys());
+      return { keys: loaded === undefined ? [] : [loaded.fileName] };
   }
 }
 
@@ -173,11 +122,13 @@ self.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
         const raw = (value as { raw?: unknown } | undefined)?.raw;
         self.postMessage(response, raw instanceof Uint8Array ? [raw.buffer] : []);
       },
-      () => {
+      (error: unknown) => {
+        // Only a code crosses the boundary: the runtime's messages may echo
+        // the request.
         const response: WorkerResponse = {
           id: request.id,
           ok: false,
-          error: operationError(request.kind).code,
+          error: error instanceof WasmProverError ? error.code : operationError(request.kind).code,
           ms: performance.now() - started,
         };
         self.postMessage(response);

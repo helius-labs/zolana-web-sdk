@@ -18,11 +18,22 @@ const key = new Uint8Array([1, 2, 3]);
 const rawKey = new Uint8Array([7, 7, 7, 7]);
 const factory = () => new Worker("test-worker");
 
-// Every pinned key is the three bytes of `key` in these tests.
+// Every pinned key is the three bytes of `key` in these tests, built from a
+// gnark key with this digest.
+const gnarkKeySha256 = vi.hoisted(() => "ab".repeat(32));
 vi.mock("../src/key-digests.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/key-digests.js")>();
-  const digest = { size: 3, sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81" };
-  const KEY_DIGESTS = Object.fromEntries(Object.keys(original.KEY_DIGESTS).map((name) => [name, digest]));
+  const KEY_DIGESTS = Object.fromEntries(
+    Object.keys(original.KEY_DIGESTS).map((name) => [
+      name,
+      {
+        file: name.replace(/\.key$/u, ".zopro"),
+        size: 3,
+        sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+        keySha256: gnarkKeySha256,
+      },
+    ]),
+  );
   return { ...original, KEY_DIGESTS };
 });
 
@@ -30,7 +41,7 @@ class TestWorker extends EventTarget {
   static instances: TestWorker[] = [];
   static holdInit = false;
   static throwOnPost = false;
-  static rawKeyFormat: string | undefined;
+  static rawKeyFormat = "raw-test";
   static rejectRaw = false;
   readonly requests: WorkerRequest[] = [];
   terminated = false;
@@ -59,10 +70,7 @@ class TestWorker extends EventTarget {
         value = { key: request.fileName, raw: request.exportRaw ? rawKey.slice() : undefined };
         break;
       case "prove":
-        value = '{"proof":"test"}';
-        break;
-      case "verify":
-        value = { valid: true };
+        value = { proof: '{"proof":"test"}', witnessMs: 0, proveMs: 1, verifyMs: 0 };
         break;
       case "loadedKeys":
         value = { keys: [] };
@@ -110,7 +118,7 @@ async function fixture(
 ) {
   const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
   const prover = new WasmProver({
-    wasmUrl: "/prover/test.wasm",
+    runtimeUrl: "/prover/",
     keyBaseUrl: "/keys",
     proverUrl: "http://localhost:3001",
     onMeasurement,
@@ -124,7 +132,7 @@ beforeEach(() => {
   TestWorker.instances = [];
   TestWorker.holdInit = false;
   TestWorker.throwOnPost = false;
-  TestWorker.rawKeyFormat = undefined;
+  TestWorker.rawKeyFormat = "raw-test";
   TestWorker.rejectRaw = false;
   vi.stubGlobal("Worker", TestWorker);
   vi.stubGlobal("caches", undefined);
@@ -139,7 +147,7 @@ describe("prover lifecycle", () => {
     const { prover } = await fixture();
     expect(prover).toBeInstanceOf(ZolanaWebProver);
     const result = await prover.proveRequest(body);
-    expect(result).toEqual({ proof: '{"proof":"test"}', proveMs: 1, verifyMs: 1 });
+    expect(result).toEqual({ proof: '{"proof":"test"}', proveMs: 1, verifyMs: 0 });
     expect(TestWorker.instances).toHaveLength(1);
     prover.terminate();
   });
@@ -312,7 +320,7 @@ describe("fetch cancellation", () => {
     prover.terminate();
   });
 
-  it.each(["loadKey", "prove", "verify"] as const)(
+  it.each(["loadKey", "prove"] as const)(
     "terminates active %s on Request cancellation and reloads after retry",
     async (kind) => {
       const { prover } = await fixture();
@@ -345,7 +353,7 @@ describe("fetch cancellation", () => {
     if (normalFetch === undefined) throw new Error("missing fetch implementation");
     let downloadSignal: AbortSignal | null | undefined;
     fetch.mockImplementation(async (input, init) => {
-      if (String(input).endsWith(".key")) {
+      if (String(input).endsWith(".zopro")) {
         downloadSignal = init?.signal;
         return download.promise;
       }
@@ -401,7 +409,7 @@ describe("fetch cancellation", () => {
 describe("witness privacy", () => {
   const sentinel = "review-private-sentinel";
 
-  it.each(["init", "loadKey", "prove", "verify"] as const)(
+  it.each(["init", "loadKey", "prove"] as const)(
     "redacts raw %s failures in the API, fetch adapter and measurements",
     async (kind) => {
       const measurements: Measurement[] = [];
@@ -456,9 +464,11 @@ describe("witness privacy", () => {
 describe("best-effort proving-key cache", () => {
   function cacheFixture() {
     const cache = {
-      match: vi.fn(async () => new Response(new Uint8Array([9, 9, 9]))),
-      delete: vi.fn(async () => true),
-      put: vi.fn(async () => {}),
+      match: vi.fn(
+        async (_url: string): Promise<Response | undefined> => new Response(new Uint8Array([9, 9, 9])),
+      ),
+      delete: vi.fn(async (_url: string) => true),
+      put: vi.fn(async (_url: string, _response: Response) => {}),
     };
     const storage = { open: vi.fn(async () => cache) };
     vi.stubGlobal("caches", storage);
@@ -485,7 +495,7 @@ describe("best-effort proving-key cache", () => {
         );
       } else cache[operation].mockRejectedValue(error);
       await expect(prover.proveRequest(body)).resolves.toHaveProperty("proof");
-      expect(fetch.mock.calls.filter(([input]) => String(input).endsWith(".key"))).toHaveLength(1);
+      expect(fetch.mock.calls.filter(([input]) => String(input).endsWith(".zopro"))).toHaveLength(1);
       expect(
         new Uint8Array(
           (request(current(), "loadKey") as Extract<WorkerRequest, { kind: "loadKey" }>).key,
@@ -529,14 +539,20 @@ describe("best-effort proving-key cache", () => {
     },
   );
 
-  it("uses a validated cache hit without downloading the key", async () => {
+  it("uses a validated cache hit without downloading the key and keeps its raw form", async () => {
     const { prover, fetch } = await fixture();
     const { cache } = cacheFixture();
-    cache.match.mockResolvedValue(new Response(key));
+    cache.match.mockImplementation(async (url: string) =>
+      url.endsWith("?zolana-key=raw") ? undefined : new Response(key),
+    );
     await prover.proveRequest(body);
     expect(fetch).not.toHaveBeenCalled();
-    expect(cache.delete).not.toHaveBeenCalled();
-    expect(cache.put).not.toHaveBeenCalled();
+    expect(cache.put.mock.calls.map(([url]) => url)).toEqual([
+      "/keys/transfer_confidential_2_2.zopro?zolana-key=raw",
+    ]);
+    expect(cache.delete.mock.calls.map(([url]) => url)).toEqual([
+      "/keys/transfer_confidential_2_2.zopro",
+    ]);
     prover.terminate();
   });
 
@@ -546,7 +562,7 @@ describe("best-effort proving-key cache", () => {
     cache.delete.mockRejectedValue(new DOMException("denied", "SecurityError"));
     const normal = fetch.getMockImplementation()!;
     fetch.mockImplementation((input, init) =>
-      String(input).endsWith(".key")
+      String(input).endsWith(".zopro")
         ? Promise.resolve(new Response(new Uint8Array([4, 5, 6])))
         : normal(input, init),
     );
@@ -573,7 +589,7 @@ describe("best-effort proving-key cache", () => {
 });
 
 describe("raw proving-key cache", () => {
-  const pinnedUrl = "/keys/transfer_confidential_2_2.key";
+  const pinnedUrl = "/keys/transfer_confidential_2_2.zopro";
   const rawUrl = `${pinnedUrl}?zolana-key=raw`;
 
   function memoryCache() {
@@ -599,18 +615,14 @@ describe("raw proving-key cache", () => {
     return found as Extract<WorkerRequest, { kind: "loadKey" }>;
   }
   const keyDownloads = (fetch: ReturnType<typeof vi.fn>) =>
-    fetch.mock.calls.filter(([input]) => String(input).endsWith(".key")).length;
+    fetch.mock.calls.filter(([input]) => String(input).endsWith(".zopro")).length;
 
-  beforeEach(() => {
-    TestWorker.rawKeyFormat = "raw-test";
-  });
-
-  it("keeps the bridge's raw key in place of the pinned file and loads it next time", async () => {
+  it("keeps the runtime's raw key in place of the pinned file and loads it next time", async () => {
     const cache = memoryCache();
     const first = await fixture();
     await first.prover.proveRequest(body);
     const pinned = loadKeyRequest();
-    expect(pinned).toMatchObject({ sha256: await hex(key), exportRaw: true });
+    expect(pinned).toMatchObject({ keySha256: gnarkKeySha256, exportRaw: true });
     expect(new Uint8Array(pinned.key)).toEqual(key);
     expect([...cache.entries.keys()]).toEqual([rawUrl]);
     const stored = cache.entries.get(rawUrl)!;
@@ -624,7 +636,7 @@ describe("raw proving-key cache", () => {
     await second.prover.proveRequest(body);
     expect(keyDownloads(second.fetch)).toBe(0);
     const raw = loadKeyRequest();
-    expect(raw).toMatchObject({ sha256: await hex(key), exportRaw: false });
+    expect(raw).toMatchObject({ keySha256: gnarkKeySha256, exportRaw: false });
     expect(new Uint8Array(raw.key)).toEqual(rawKey);
     expect(steps.find((step) => step.step === "key-fetch")?.note).toContain("raw-key cache");
     second.prover.terminate();
@@ -657,7 +669,7 @@ describe("raw proving-key cache", () => {
     },
   );
 
-  it("falls back to the pinned key when the bridge rejects a cached raw key", async () => {
+  it("falls back to the pinned key when the runtime rejects a cached raw key", async () => {
     const cache = memoryCache();
     const seed = await fixture();
     await seed.prover.proveRequest(body);
@@ -674,18 +686,19 @@ describe("raw proving-key cache", () => {
     prover.terminate();
   });
 
-  it("does not ask for a raw key without a cache or from a bridge that has none", async () => {
+  it("does not ask for a raw key without a cache", async () => {
+    vi.stubGlobal("caches", undefined);
     const { prover } = await fixture();
     await prover.proveRequest(body);
     expect(loadKeyRequest().exportRaw).toBe(false);
     prover.terminate();
+  });
 
-    memoryCache();
-    TestWorker.rawKeyFormat = undefined;
-    const older = await fixture();
-    await older.prover.proveRequest(body);
-    expect(loadKeyRequest().exportRaw).toBe(false);
-    older.prover.terminate();
+  it("refuses a runtime that reports no raw key format", async () => {
+    TestWorker.rawKeyFormat = undefined as unknown as string;
+    const { prover } = await fixture();
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_invalid_response" });
+    prover.terminate();
   });
 });
 
@@ -767,10 +780,6 @@ describe("prefetch and key progress", () => {
       .requests.filter((request) => request.kind === "loadKey")
       .map((request) => (request as Extract<WorkerRequest, { kind: "loadKey" }>).fileName);
 
-  beforeEach(() => {
-    TestWorker.rawKeyFormat = "raw-test";
-  });
-
   it("decodes each shape once and skips shapes whose raw form is kept", async () => {
     const entries = memoryCache();
     const first = await fixture();
@@ -802,7 +811,6 @@ describe("prefetch and key progress", () => {
       "loadKey",
       "loadKey",
       "prove",
-      "verify",
     ]);
     expect(loadedFiles()).toEqual([oneByTwo.keyFile, twoByTwo.keyFile]);
     prover.terminate();
@@ -838,15 +846,33 @@ describe("key source", () => {
   it("fetches keys from the pinned CDN folder unless keyBaseUrl is set", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
     const prover = new WasmProver({
-      wasmUrl: "/prover/test.wasm",
+      runtimeUrl: "/prover/",
       proverUrl: "http://localhost:3001",
       fetch,
     });
     await prover.proveRequest(body);
     expect(fetch.mock.calls.map(([input]) => String(input))).toEqual([
-      `${KEY_BASE_URL}transfer_confidential_2_2.key`,
+      `${KEY_BASE_URL}transfer_confidential_2_2.zopro`,
     ]);
     expect(KEY_BASE_URL).toMatch(/^https:\/\/.+\/3a1c88f90f609eb1\/$/u);
+    prover.terminate();
+  });
+});
+
+describe("worker error codes", () => {
+  it("keeps a known worker code and replaces any other with the operation's", async () => {
+    const { prover } = await fixture();
+    const reply = TestWorker.prototype.reply;
+    let code = "wasm_key_digest_mismatch";
+    vi.spyOn(TestWorker.prototype, "reply").mockImplementation(function (this: TestWorker, request) {
+      if (request.kind === "loadKey") this.message({ id: request.id, ok: false, error: code, ms: 0 });
+      else reply.call(this, request);
+    });
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_key_digest_mismatch" });
+    code = "wasm_prover_error";
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_key_load_failed" });
+    code = "toString";
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_key_load_failed" });
     prover.terminate();
   });
 });

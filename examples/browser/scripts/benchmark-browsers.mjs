@@ -5,14 +5,12 @@ import { fileURLToPath } from "node:url";
 import { Builder, By, until } from "selenium-webdriver";
 import chrome from "selenium-webdriver/chrome.js";
 import firefox from "selenium-webdriver/firefox.js";
-import { profileKernel } from "./profile-kernel.mjs";
 
 const browserName = process.argv[2] || "brave";
 if (!["brave", "firefox"].includes(browserName)) throw new Error("Choose brave or firefox");
 const counts = (process.argv[3] || "18,6,1").split(",").map(Number);
-const profile = process.argv[4] === "profile";
 assert.ok(counts.every((count) => Number.isInteger(count) && count >= 1 && count <= 64));
-const out = fileURLToPath(new URL("../../../target/mopro-browser-comparison/", import.meta.url));
+const out = fileURLToPath(new URL("../../../target/browser-comparison/", import.meta.url));
 await mkdir(out, { recursive: true });
 let builder = new Builder();
 if (browserName === "firefox") {
@@ -62,23 +60,6 @@ try {
   assert.equal(results.environment.isolated, true);
   console.log(browserName, JSON.stringify(results.environment));
   for (const count of counts) {
-    if (profile) {
-      const run = await profileKernel(driver, count);
-      if (run.error) throw new Error(run.error);
-      results.runs.push(run);
-      await writeFile(out + browserName + "-profile.json", JSON.stringify(results, null, 2));
-      console.log(
-        JSON.stringify({
-          browser: browserName,
-          count,
-          rustSolver: run.rustSolver,
-          totalMs: median(run.samples.map((x) => x.totalMs)),
-          kernelMs: median(run.samples.map((x) => x.kernelMs)),
-          otherMs: median(run.samples.map((x) => x.otherMs)),
-        }),
-      );
-      continue;
-    }
     await driver.findElement(By.css('button[aria-label="Options"]')).click();
     const mode = await driver.findElement(By.id("proving-mode"));
     await mode.findElement(By.css('option[value="custom"]')).click();
@@ -99,7 +80,7 @@ try {
     for (let i = 0; i < 3; i++) warmups.push(await prove());
     assert.ok(
       (await driver.findElement(By.css(".proof-facts")).getAttribute("textContent")).includes(
-        `Arkworks · ${count} threads`,
+        `zopro · ${count} threads`,
       ),
     );
     const samples = [];

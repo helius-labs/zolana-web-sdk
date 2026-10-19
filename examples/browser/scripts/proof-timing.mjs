@@ -10,7 +10,7 @@
 // laptop on a bigger machine).
 //
 // A shape is `<inputs>x<outputs>` for a confidential transfer or
-// `merge-<inputs>x1` for a merge, its request in wasm/prover-wasm/testdata.
+// `merge-<inputs>x1` for a merge, its request in fixtures/.
 // Without ZOLANA_TIMING_SHAPES every shape runs; shapes over eight notes run
 // two rounds, a first and a warm one. A shape that fails prints an `error`
 // line, the others still run, and the harness exits with 1.
@@ -38,7 +38,7 @@ import { createServer, preview } from "vite";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const lock = JSON.parse(
-  readFileSync(new URL("../../../wasm/prover/provingkeys/proving-keys.lock", import.meta.url), "utf8"),
+  readFileSync(new URL("../../../zopro-keys.lock", import.meta.url), "utf8"),
 );
 const shapes = (process.env.ZOLANA_TIMING_SHAPES || "1x2,2x2,4x2,8x2,16x2,24x2,merge-24x1").split(",");
 const rounds = Number(process.env.ZOLANA_TIMING_ROUNDS || 4);
@@ -187,7 +187,7 @@ let failed = false;
 try {
   await open();
   for (const shape of shapes) {
-    const json = readFileSync(`${root}../../wasm/prover-wasm/testdata/${requestOf(shape)}`, "utf8");
+    const json = readFileSync(`${root}../../fixtures/${requestOf(shape)}`, "utf8");
     const keyBytes = lock.keys[keyOf(shape)]?.size ?? 0;
     let run = "fresh";
     try {

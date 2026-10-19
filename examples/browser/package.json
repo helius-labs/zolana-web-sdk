@@ -3,15 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Focused browser demo for local Zolana proving with Go and threaded Arkworks engines.",
+  "description": "Browser benchmark for local Zolana proving with zopro.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:browser": "node scripts/test-mopro-browser.mjs",
-    "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:browser": "node scripts/test-browser.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@heliuslabs/zolana": "0.4.0-alpha",

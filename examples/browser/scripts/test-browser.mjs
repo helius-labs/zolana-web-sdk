@@ -12,7 +12,7 @@ const server = process.env.DEMO_URL
 await server?.listen();
 const out =
   process.env.DEMO_REPORT_DIR ||
-  fileURLToPath(new URL("../../../target/mopro-browser-ui/", import.meta.url));
+  fileURLToPath(new URL("../../../target/browser-ui/", import.meta.url));
 await mkdir(out, { recursive: true });
 const options = new chrome.Options().addArguments("--headless", "--window-size=1440,1100");
 if (process.env.CHROME_BIN) options.setChromeBinaryPath(process.env.CHROME_BIN);
@@ -69,10 +69,10 @@ try {
   await (await button("Generate proof")).click();
   await (await button("Cancel")).click();
   await driver.wait(async () => (await button("Generate proof")).isEnabled(), 10000);
-  await run(`Arkworks · ${automaticThreads} threads`);
+  await run(`zopro · ${automaticThreads} threads`);
   await writeFile(`${out}/desktop-result.png`, await driver.takeScreenshot(), "base64");
   await (await button("Benchmark")).click();
-  await run(`Arkworks · ${automaticThreads} threads`);
+  await run(`zopro · ${automaticThreads} threads`);
   assert.match(await driver.findElement(By.css(".verified")).getText(), /5 proofs verified/);
   await (await button("Single proof")).click();
 
@@ -93,18 +93,14 @@ try {
     10000,
   );
   await closeOptions();
-  await run(`Arkworks · ${automaticThreads} threads`);
+  await run(`zopro · ${automaticThreads} threads`);
 
   await openOptions();
   const mode = await driver.findElement(By.id("proving-mode"));
   await mode.findElement(By.css('option[value="custom"]')).click();
   await editValue(await driver.findElement(By.id("thread-count")), "2");
   await closeOptions();
-  await run("Arkworks · 2 threads");
-  await openOptions();
-  await mode.findElement(By.css('option[value="go"]')).click();
-  await closeOptions();
-  await run("Go");
+  await run("zopro · 2 threads");
   await openOptions();
   await mode.findElement(By.css('option[value="auto"]')).click();
   await closeOptions();
@@ -135,7 +131,7 @@ try {
   await writeFile(`${out}/proofs.json`, JSON.stringify(proofs, null, 2));
   await writeFile(`${out}/results.json`, JSON.stringify(results, null, 2));
   console.log(
-    "PASS: proving, benchmark, cancellation, invalid input recovery, automatic/custom threads, Go, mobile dialog, focus return, and no external API requests.",
+    "PASS: proving, benchmark, cancellation, invalid input recovery, automatic/custom threads, mobile dialog, focus return, and no external API requests.",
   );
 } catch (error) {
   await writeFile(`${out}/failure.png`, await driver.takeScreenshot(), "base64");

@@ -5,7 +5,7 @@ A devnet private wallet where every zero-knowledge proof is made in the browser 
 The whole integration is in [`src/zolana.ts`](src/zolana.ts):
 
 ```ts
-const prover = new ZolanaWebProver({ wasmUrl: "/prover/zolana-prover.wasm", proverUrl }); // keys come from the key CDN
+const prover = new ZolanaWebProver({ runtimeUrl: "/prover/", proverUrl }); // keys come from the key CDN
 const client = await createZolanaClient({
   solanaRpcUrl, indexerUrl, proverUrl,
   proofDataSource: "client",

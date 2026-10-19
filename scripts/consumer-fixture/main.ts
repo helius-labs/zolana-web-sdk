@@ -11,35 +11,9 @@ window.checkPackedProver = async () => {
   const sentinel = "review-private-sentinel";
   const measurements: Measurement[] = [];
   const results: unknown[] = [];
-  const rawWorker = new Worker(new URL("./raw-bridge.worker.ts", import.meta.url), {
-    type: "module",
-  });
-  try {
-    const invalid = structuredClone(request);
-    invalid.inputs[0].nullifierSecret = sentinel;
-    const raw = await new Promise<{ failures?: unknown[] }>((resolve, reject) => {
-      rawWorker.onmessage = (event) => resolve(event.data);
-      rawWorker.onerror = () => reject(new Error("Raw bridge worker failed"));
-      rawWorker.postMessage(JSON.stringify(invalid));
-    });
-    if (
-      raw.failures?.length !== 4 ||
-      raw.failures.some(
-        (failure) =>
-          JSON.stringify(failure) !==
-            JSON.stringify({ code: "wasm_backend_error", error: "Prover operation failed" }) &&
-          JSON.stringify(failure) !==
-            JSON.stringify({ error: "Prover operation failed", code: "wasm_backend_error" }),
-      )
-    ) {
-      throw new Error("Raw Go bridge did not redact errors and panics");
-    }
-  } finally {
-    rawWorker.terminate();
-  }
-  for (const threads of [0, 2]) {
+  for (const threads of [1, 2]) {
     const prover = new ZolanaWebProver({
-      wasmUrl: "/prover/zolana-prover.wasm",
+      runtimeUrl: "/prover/",
       keyBaseUrl: "/keys",
       proverUrl: location.origin + "/local",
       threads,

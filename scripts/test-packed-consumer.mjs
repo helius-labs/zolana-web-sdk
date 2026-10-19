@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { copyFile, cp, lstat, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -59,11 +59,7 @@ try {
     ["-p", "tsconfig.json", "--module", "preserve", "--moduleResolution", "bundler"],
     consumer,
   );
-  for (const path of [
-    "scripts/setup-assets.mjs",
-    "runtime.lock.json",
-    "wasm/prover/provingkeys/proving-keys.lock",
-  ]) {
+  for (const path of ["scripts/setup-assets.mjs", "zopro-keys.lock", "fixtures/transfer-2x2.json"]) {
     assert.deepEqual(
       await readFile(join(installed, "dist", path)),
       await readFile(join(root, path)),
@@ -75,12 +71,8 @@ try {
     consumer,
   );
   assert.deepEqual(
-    await readFile(join(consumer, "public/prover/zolana-prover.wasm")),
-    await readFile(join(root, "dist/bridge/zolana-prover.wasm")),
-  );
-  await copyFile(
-    join(installed, "dist/dist/bridge/wasm_exec.js"),
-    join(consumer, "public/raw-wasm-exec.js"),
+    await readFile(join(consumer, "public/prover/zopro_prover_bg.wasm")),
+    await readFile(join(root, "dist/runtime/zopro_prover_bg.wasm")),
   );
   const vite = await import(
     pathToFileURL(join(consumer, "node_modules/vite/dist/node/index.js")).href
@@ -128,7 +120,7 @@ try {
   const logs = await driver.manage().logs().get(logging.Type.BROWSER);
   assert.doesNotMatch(JSON.stringify(logs), /review-private-sentinel/);
   console.log(
-    "PASS: clean packed install, strict NodeNext/bundler types, production browser proofs (Go + Arkworks), raw Go errors/panics, witness error redaction and recovery.",
+    "PASS: clean packed install, strict NodeNext/bundler types, production browser proofs at one and two threads, witness error redaction and recovery.",
   );
   console.log(JSON.stringify(result.results));
 } finally {

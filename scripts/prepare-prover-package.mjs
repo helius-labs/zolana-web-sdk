@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = join(root, "packages/web-prover/dist");
-const manifest = JSON.parse(await readFile(join(root, "dist/bridge/manifest.json"), "utf8"));
+const manifest = JSON.parse(await readFile(join(root, "dist/runtime/manifest.json"), "utf8"));
 for (const path of [
-  "dist/bridge/manifest.json",
-  ...manifest.files.map(({ asset }) => `dist/bridge/${asset}`),
+  "dist/runtime/manifest.json",
+  ...manifest.files.map(({ path }) => `dist/runtime/${path}`),
   "scripts/setup-assets.mjs",
-  "runtime.lock.json",
-  "wasm/prover/provingkeys/proving-keys.lock",
+  "zopro-keys.lock",
+  "fixtures/transfer-2x2.json",
   "LICENSE",
 ]) {
   const destination = join(output, path);

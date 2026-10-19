@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { automaticProvingThreads, WasmProver } from "@heliuslabs/zolana-web-prover";
 
 type Mode = "proof" | "benchmark";
-type ThreadMode = "auto" | "custom" | "go";
+type ThreadMode = "auto" | "custom";
 type Phase = "loading" | "idle" | "starting" | "preparing" | "proving";
 type ProofResult = Awaited<ReturnType<WasmProver["proveRequest"]>>;
 
@@ -34,8 +34,7 @@ export function App(): React.ReactElement {
     Number.isInteger(Number(customThreads)) &&
     Number(customThreads) >= 1 &&
     Number(customThreads) <= 64;
-  const threads =
-    threadMode === "go" ? 0 : threadMode === "auto" ? automaticThreads : Number(customThreads);
+  const threads = threadMode === "auto" ? automaticThreads : Number(customThreads);
   const busy = phase !== "idle" && phase !== "loading";
   const latest = results.at(-1);
   const provingMs = results.length ? median(results.map((result) => result.proveMs)) : undefined;
@@ -98,15 +97,15 @@ export function App(): React.ReactElement {
           "The proof input isn't valid JSON. Check it in Options or restore the sample.",
         );
       }
-      if (threads > 0 && !globalThis.crossOriginIsolated) {
+      if (!globalThis.crossOriginIsolated) {
         throw new Error(
-          "Parallel proving isn't available in this browser. Choose Go baseline in Options.",
+          "Proving needs a cross-origin isolated page, which this browser did not give.",
         );
       }
       let instance = runtime.current;
       if (instance === undefined) {
         instance = new WasmProver({
-          wasmUrl: `${import.meta.env.VITE_ZOLANA_WASM_URL ?? `${import.meta.env.BASE_URL}prover`}/zolana-prover.wasm`,
+          runtimeUrl: `${import.meta.env.VITE_ZOLANA_RUNTIME_URL ?? `${import.meta.env.BASE_URL}prover`}/`,
           keyBaseUrl: import.meta.env.VITE_ZOLANA_KEYS_URL ?? `${import.meta.env.BASE_URL}keys`,
           // Required by the shared transport; this page calls proveRequest directly.
           proverUrl: new URL("prove", location.href).href,
@@ -314,7 +313,6 @@ export function App(): React.ReactElement {
               >
                 <option value="auto">Automatic</option>
                 <option value="custom">Custom threads</option>
-                <option value="go">Go baseline</option>
               </select>
             </label>
             {threadMode === "custom" && (
@@ -405,7 +403,7 @@ export function App(): React.ReactElement {
             </div>
             <div>
               <dt>Engine</dt>
-              <dd>{activeThreads === 0 ? "Go" : `Arkworks · ${activeThreads} threads`}</dd>
+              <dd>{`zopro · ${String(activeThreads)} threads`}</dd>
             </div>
           </dl>
           <pre className="proof-json">
