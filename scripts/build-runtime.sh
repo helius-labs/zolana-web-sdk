@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the prover runtime, zopro-prover for the browser, at the zopro
+# Builds the prover runtime, zopro-zolana for the browser, at the zopro
 # revision runtime.lock.json pins, into dist/runtime with a manifest of its
 # files (path, size, sha256). The package bundles it and `npm run setup`
 # installs it under examples/browser/public/prover. ZOPRO_DIR builds from
@@ -31,7 +31,7 @@ else
 fi
 target="${CARGO_TARGET_DIR:-$root/target/zopro-wasm}"
 
-(cd "$zopro/crates/zopro-prover" && CARGO_TARGET_DIR="$target" CARGO_PROFILE_RELEASE_LTO=false \
+(cd "$zopro/crates/zopro-zolana" && CARGO_TARGET_DIR="$target" CARGO_PROFILE_RELEASE_LTO=false \
   rustup run "$rust_toolchain" cargo rustc --release --locked --target wasm32-unknown-unknown \
   --crate-type cdylib --features wgpu)
 bindgen="$(command -v wasm-bindgen || true)"
@@ -42,13 +42,13 @@ if [[ ! -x "$bindgen" ]]; then
   echo "wasm-bindgen $bindgen_version is required (cargo install wasm-bindgen-cli --version $bindgen_version)" >&2
   exit 1
 fi
-"$bindgen" --target web --out-name zopro_prover --out-dir "$work/bindgen" \
-  "$target/wasm32-unknown-unknown/release/zopro_prover.wasm"
+"$bindgen" --target web --out-name zopro_zolana --out-dir "$work/bindgen" \
+  "$target/wasm32-unknown-unknown/release/zopro_zolana.wasm"
 
 out="$root/dist/runtime"
 rm -rf "$out"
 mkdir -p "$out"
-install -m 644 "$work/bindgen/zopro_prover.js" "$work/bindgen/zopro_prover_bg.wasm" "$out/"
+install -m 644 "$work/bindgen/zopro_zolana.js" "$work/bindgen/zopro_zolana_bg.wasm" "$out/"
 cp -R "$work/bindgen/snippets" "$out/snippets"
 install -m 644 "$zopro/crates/zopro-core/LICENSE-APACHE" "$zopro/crates/zopro-core/LICENSE-MIT" "$out/"
 ZOPRO_REVISION="$built" RUST_TOOLCHAIN="$rust_toolchain" WASM_BINDGEN="$bindgen_version" node --input-type=module - "$out" <<'NODE'
@@ -79,4 +79,4 @@ const manifest = {
 };
 await writeFile(join(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 NODE
-echo "runtime $(shasum -a 256 "$out/zopro_prover_bg.wasm" | cut -c1-12) from zopro $built in $out"
+echo "runtime $(shasum -a 256 "$out/zopro_zolana_bg.wasm" | cut -c1-12) from zopro $built in $out"

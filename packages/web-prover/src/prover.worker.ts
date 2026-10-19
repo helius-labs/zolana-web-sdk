@@ -2,7 +2,7 @@
 /**
  * Hosts the prover runtime off the main thread.
  *
- * The runtime is zopro-prover built for the browser: one WebAssembly module
+ * The runtime is zopro-zolana built for the browser: one WebAssembly module
  * that loads a key, builds the witness, proves on a thread pool (and WebGPU
  * where the page has it) and verifies the proof before it returns it. A
  * proof takes seconds, so this is a worker. Every operation is timed here
@@ -12,11 +12,11 @@
 
 import type { WorkerRequest, WorkerResponse } from "./wasm-prover.js";
 import { operationError, WasmProverError } from "./errors.js";
-import { importRuntime, type ProofValue, type Runtime, type WebProver } from "./runtime.js";
+import { importRuntime, type ProofValue, type Runtime, type ZolanaProver } from "./runtime.js";
 
 let runtime: Runtime | undefined;
 let activeThreads = 0;
-let loaded: { fileName: string; prover: WebProver } | undefined;
+let loaded: { fileName: string; prover: ZolanaProver } | undefined;
 
 async function init(runtimeUrl: string, threads: number): Promise<void> {
   if (runtime !== undefined) return;
@@ -46,11 +46,11 @@ function loadKey(
   keySha256: string,
   exportRaw: boolean,
 ): { key: string; inputs: number; outputs: number; raw?: Uint8Array } {
-  const { WebProver } = requireRuntime();
+  const { ZolanaProver } = requireRuntime();
   // One key at a time: its points are most of the wasm heap.
   loaded?.prover.free();
   loaded = undefined;
-  const prover = new WebProver(key);
+  const prover = new ZolanaProver(key);
   if (prover.digest() !== keySha256) {
     prover.free();
     throw new WasmProverError("wasm_key_digest_mismatch");

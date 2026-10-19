@@ -8,7 +8,7 @@
 
 To rebuild the keys after a rotation, run zopro's `tools/gnark/build-keys.sh` with upstream's gnark lockfile, publish the `.zopro` files in the key set's CDN folder, copy the `zopro-keys.lock` it writes here and run `npm run generate:keys --workspace @heliuslabs/zolana-web-prover`.
 
-The runtime is zopro-prover at the revision `runtime.lock.json` pins (`scripts/build-runtime.sh`).
+The runtime is zopro-zolana at the revision `runtime.lock.json` pins (`scripts/build-runtime.sh`).
 
 Source mapping:
 

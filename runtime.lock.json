@@ -2,7 +2,7 @@
   "format": 2,
   "zopro": {
     "repository": "https://github.com/helius-labs/zopro.git",
-    "revision": "f3c4f1dcab1d14bfd3811dd261d8bb87a3c690ee"
+    "revision": "7fd2a79d6c85464719efbc98e3e706505b76cb4c"
   },
   "rustToolchain": "nightly-2025-11-15",
   "wasmBindgen": "0.2.128"

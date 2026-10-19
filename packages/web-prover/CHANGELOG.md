@@ -6,7 +6,7 @@ The first published release. Proofs are made by zopro, a Rust Groth16 prover for
 
 Breaking
 
-- `WasmProverOptions.runtimeUrl` names the directory the asset command installs the runtime in (`/prover/`), holding `zopro_prover.js`, its wasm and `snippets/`.
+- `WasmProverOptions.runtimeUrl` names the directory the asset command installs the runtime in (`/prover/`), holding `zopro_zolana.js`, its wasm and `snippets/`.
 - Proving needs cross-origin isolation and at least one thread (`threads`, by default the browser's processors up to 18).
 - Keys are zopro keys, `<name>.zopro`, each built from the pinned gnark key of the same name and checked against the size and SHA-256 bundled in the package from `zopro-keys.lock`; `keys/manifest.json` is not read and `zolana-prover-assets` writes none → serve the `.zopro` files only.
 

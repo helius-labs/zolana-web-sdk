@@ -71,8 +71,8 @@ try {
     consumer,
   );
   assert.deepEqual(
-    await readFile(join(consumer, "public/prover/zopro_prover_bg.wasm")),
-    await readFile(join(root, "dist/runtime/zopro_prover_bg.wasm")),
+    await readFile(join(consumer, "public/prover/zopro_zolana_bg.wasm")),
+    await readFile(join(root, "dist/runtime/zopro_zolana_bg.wasm")),
   );
   const vite = await import(
     pathToFileURL(join(consumer, "node_modules/vite/dist/node/index.js")).href

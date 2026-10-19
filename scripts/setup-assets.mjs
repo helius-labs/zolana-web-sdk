@@ -71,7 +71,7 @@ for (const entry of manifest.files) {
   verifyBytes(entry.path, bytes, entry);
   runtime.push({ destination, entry, bytes });
 }
-if (!runtime.some(({ entry }) => entry.path === "zopro_prover.js"))
+if (!runtime.some(({ entry }) => entry.path === "zopro_zolana.js"))
   throw new Error("Invalid prover runtime manifest");
 
 const shown = (path) => relative(process.cwd(), path) || ".";

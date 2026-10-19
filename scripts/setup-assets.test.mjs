@@ -14,7 +14,7 @@ function digest(bytes) {
 const helper = "snippets/wasm-bindgen-rayon-0/src/workerHelpers.no-bundler.js";
 
 /** A package-shaped directory: the setup script, a runtime, the lock and a release of keys. */
-async function fixture(context, runtimePath = "zopro_prover_bg.wasm") {
+async function fixture(context, runtimePath = "zopro_zolana_bg.wasm") {
   const root = await mkdtemp(join(tmpdir(), "zolana-assets-test-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   for (const path of ["scripts", "release", "fixtures", "dist/runtime"])
@@ -22,7 +22,7 @@ async function fixture(context, runtimePath = "zopro_prover_bg.wasm") {
   await copyFile(new URL("./setup-assets.mjs", import.meta.url), join(root, "scripts/setup-assets.mjs"));
   const files = [];
   for (const [path, text] of [
-    ["zopro_prover.js", "runtime module"],
+    ["zopro_zolana.js", "runtime module"],
     [runtimePath, "runtime wasm"],
     [helper, "thread pool helper"],
   ]) {
@@ -62,8 +62,8 @@ test("setup installs the bundled runtime, the sample request and the default key
   const { output, bytes, run } = await fixture(context);
   const result = run();
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(await readFile(join(output, "prover/zopro_prover.js"), "utf8"), "runtime module");
-  assert.equal(await readFile(join(output, "prover/zopro_prover_bg.wasm"), "utf8"), "runtime wasm");
+  assert.equal(await readFile(join(output, "prover/zopro_zolana.js"), "utf8"), "runtime module");
+  assert.equal(await readFile(join(output, "prover/zopro_zolana_bg.wasm"), "utf8"), "runtime wasm");
   assert.equal(await readFile(join(output, `prover/${helper}`), "utf8"), "thread pool helper");
   assert.equal(await readFile(join(output, "fixtures/transfer-2x2.json"), "utf8"), "sample request");
   assert.deepEqual(await readFile(join(output, "keys/transfer_confidential_2_2.zopro")), bytes);
@@ -73,11 +73,11 @@ test("setup installs the bundled runtime, the sample request and the default key
 
 test("setup refuses corrupt runtime files before installing any", async (context) => {
   const { root, output, run } = await fixture(context);
-  await writeFile(join(root, "dist/runtime/zopro_prover_bg.wasm"), "runtime wasN");
+  await writeFile(join(root, "dist/runtime/zopro_zolana_bg.wasm"), "runtime wasN");
   const result = run();
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /SHA-256 verification/);
-  await assert.rejects(readFile(join(output, "prover/zopro_prover.js")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(output, "prover/zopro_zolana.js")), { code: "ENOENT" });
 });
 
 test("setup rejects a runtime path outside the prover directory", async (context) => {
@@ -108,7 +108,7 @@ test("--keys none installs the runtime without any key", async (context) => {
   const { output, run } = await fixture(context);
   const result = run("--keys", "none");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(await readFile(join(output, "prover/zopro_prover.js"), "utf8"), "runtime module");
+  assert.equal(await readFile(join(output, "prover/zopro_zolana.js"), "utf8"), "runtime module");
   await assert.rejects(readFile(join(output, "keys/transfer_confidential_2_2.zopro")), { code: "ENOENT" });
 });
 
@@ -126,7 +126,7 @@ test("unsupported, malformed and duplicate key selections fail before installing
     assert.notEqual(run("--keys", selection).status, 0);
   assert.notEqual(run("--keys").status, 0);
   assert.notEqual(run("--keys", "merge_8_1.key", "--keys", "merge_8_1.key").status, 0);
-  await assert.rejects(readFile(join(output, "prover/zopro_prover.js")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(output, "prover/zopro_zolana.js")), { code: "ENOENT" });
 });
 
 test("explicit key selection still rejects corrupt key bytes", async (context) => {

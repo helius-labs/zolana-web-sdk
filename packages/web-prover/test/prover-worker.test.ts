@@ -9,7 +9,7 @@ let prover: Record<
   ReturnType<typeof vi.fn>
 >;
 let runtime: Record<"default" | "initThreadPool" | "init_gpu" | "raw_format", ReturnType<typeof vi.fn>> & {
-  WebProver: ReturnType<typeof vi.fn>;
+  ZolanaProver: ReturnType<typeof vi.fn>;
 };
 let initialized: WorkerResponse;
 
@@ -34,7 +34,7 @@ beforeEach(async () => {
     initThreadPool: vi.fn(async () => {}),
     init_gpu: vi.fn(async () => {}),
     raw_format: vi.fn(() => "raw-test"),
-    WebProver: vi.fn(function () {
+    ZolanaProver: vi.fn(function () {
       return prover;
     }),
   };
@@ -83,7 +83,7 @@ it.each(["prove", "loadKey"] as const)(
         return Promise.reject(sentinel);
       };
       if (kind === "prove") prover.prove.mockImplementation(fail);
-      else runtime.WebProver.mockImplementation(fail);
+      else runtime.ZolanaProver.mockImplementation(fail);
       const response =
         kind === "prove" ? await send({ id: 3, kind: "prove", body: sentinel }) : await loadKey();
       expect(response.ok).toBe(false);
@@ -96,7 +96,7 @@ it.each(["prove", "loadKey"] as const)(
 it("loads a key, checks the gnark key it was built from and moves its raw form to the page", async () => {
   const response = await loadKey(true);
   expect(response.ok).toBe(true);
-  expect(new Uint8Array(runtime.WebProver.mock.calls[0]![0])).toEqual(new Uint8Array([1, 2, 3]));
+  expect(new Uint8Array(runtime.ZolanaProver.mock.calls[0]![0])).toEqual(new Uint8Array([1, 2, 3]));
   expect(response.value).toMatchObject({ key: "transfer_confidential_2_2", inputs: 2, outputs: 2 });
   const raw = (response.value as { raw: Uint8Array }).raw;
   expect(scope.postMessage.mock.calls[0]![1]).toEqual([raw.buffer]);

@@ -10,7 +10,7 @@ Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a 
 - [`examples/wallet`](examples/wallet/README.md) is the integration example: a devnet private wallet on the published `@heliuslabs/zolana@0.4.0-alpha` that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
 - `examples/browser` is a prover benchmark. It proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, on one proof or five.
 - `@heliuslabs/zolana-web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
-- The prover runtime is zopro-prover, a Rust Groth16 prover for gnark's circuits, built for the browser from the zopro revision `runtime.lock.json` pins. Its keys are zopro keys built from the gnark proving keys the SDK pins, pinned in `zopro-keys.lock`.
+- The prover runtime is zopro-zolana, Zolana's requests on zopro (a Rust Groth16 prover for gnark circuits), built for the browser from the zopro revision `runtime.lock.json` pins. Its keys are zopro keys built from the gnark proving keys the SDK pins, pinned in `zopro-keys.lock`.
 
 ## Setup
 
@@ -55,7 +55,7 @@ The requests are `fixtures/transfer-*.json` and `merge-*.json`, valid witnesses 
 
 ## Runtime and keys
 
-`runtime.lock.json` pins the zopro repository and revision the runtime is built from, with the Rust toolchain and the wasm-bindgen version. `scripts/build-runtime.sh` (`npm run build:runtime`) builds zopro-prover for the browser into `dist/runtime` with a manifest of every file's size and SHA-256; the package bundles it and the asset command checks each file against the manifest as it installs it. A new runtime is a new pinned revision.
+`runtime.lock.json` pins the zopro repository and revision the runtime is built from, with the Rust toolchain and the wasm-bindgen version. `scripts/build-runtime.sh` (`npm run build:runtime`) builds zopro-zolana for the browser into `dist/runtime` with a manifest of every file's size and SHA-256; the package bundles it and the asset command checks each file against the manifest as it installs it. A new runtime is a new pinned revision.
 
 The keys are zopro keys: one file per circuit with the gnark proving key's points, the circuit's solver program, its input names and its verifying key, built offline from the gnark keys of the pinned key set with zopro's `tools/gnark/build-keys.sh`. `zopro-keys.lock` pins each file's size and SHA-256 beside the SHA-256 of the gnark key it was built from, which proofs report, and the CDN folder they are served from; `scripts/check-upstream.sh` checks it against the pinned zolana release (see [UPSTREAM.md](UPSTREAM.md)).
 

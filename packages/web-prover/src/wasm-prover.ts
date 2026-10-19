@@ -7,7 +7,7 @@
  * recognizes the prover URL and answers it from wasm instead of the network.
  * Everything else -- indexer calls, Solana RPC -- falls through untouched.
  *
- * The runtime is zopro-prover built for the browser: Zolana's request and
+ * The runtime is zopro-zolana built for the browser: Zolana's request and
  * proof formats, gnark's keys repacked as zopro key files.
  */
 
@@ -57,7 +57,7 @@ export type WorkerResponse = Readonly<{
 
 export interface WasmProverOptions {
   /**
-   * URL of the directory holding the prover runtime (`zopro_prover.js`, its
+   * URL of the directory holding the prover runtime (`zopro_zolana.js`, its
    * wasm and `snippets/`), as installed by `zolana-prover-assets`.
    */
   readonly runtimeUrl: string;
