@@ -2,7 +2,7 @@
 
 Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
 
-**Performance.** With the zopro runtime in Chrome at four threads on an Apple M5 Pro, with WebGPU, a warm proof (key loaded, nothing to download) takes 0.06 s for one note to two outputs, 0.09 s for two, 0.14 s for four, 0.21 s for eight, 0.39 s for sixteen and 0.61 s for twenty-four. Without WebGPU the CPU alone takes 0.29 s for two notes, 0.92 s for eight and 2.8 s for twenty-four. The first proof after a page reload adds the key's load from the raw-key cache (0.02 s to 0.32 s). The first ever adds its download (7 MB to 145 MB) and its decode (1 s to 17 s). CI benches every pull request on four-core runners and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+**Performance.** With the zopro runtime in Chrome at four threads on an Apple M5 Pro, with WebGPU, a warm proof (key loaded, nothing to download) takes 0.06 s for one note to two outputs, 0.08 s for two, 0.12 s for four, 0.18 s for eight, 0.32 s for sixteen and 0.49 s for twenty-four. Without WebGPU the CPU alone takes 0.28 s for two notes, 0.87 s for eight and 2.6 s for twenty-four. The first proof after a page reload adds the key's load from the raw-key cache (0.02 s to 0.32 s). The first ever adds its download (7 MB to 145 MB) and its decode (1 s to 17 s). CI benches every pull request on four-core runners and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Packages
 
@@ -52,6 +52,10 @@ node scripts/proof-timing-report.mjs --logs /tmp/timing
 The lines land in `/tmp/timing/<label>/` (`chrome-linux`, `chrome-macos` or `chrome-windows` unless `ZOLANA_TIMING_LABEL` names the machine), beside a `runner.json` with the browser, system, processor, memory and thread count; `ZOLANA_TIMING_BUILT=1` times the built page (`npm run build:example`) instead of the dev server.
 
 The requests are `fixtures/transfer-*.json` and `merge-*.json`, valid witnesses on trees of their own (the mobile SDK's `tools/prove-fixtures` wrote them). Keys load from where the page loads them, so set `VITE_ZOLANA_KEYS_URL` to the key CDN for shapes not staged under `public/keys`. `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per shape and run; `ZOLANA_TIMING_THREADS=4` sizes the runtime's thread pool as on a four-core laptop, and `ZOLANA_TIMING_CHROME_ARGS=--disable-features=WebGPU` times the CPU alone.
+
+### GPU profile
+
+`examples/browser/scripts/gpu-profile.mjs` proves fixtures in headless Chrome with the runtime's profiling on and prints, per proof, each WebGPU kernel's time from timestamp queries (rounded to 0.1 ms by the browser) beside the host's stages: the witness solve, the sorts, the CPU's share of the G2 MSM and the waits. Run it after `npm run setup`; `ZOLANA_PROFILE_SHAPES`, `ZOLANA_PROFILE_THREADS` and `ZOLANA_PROFILE_ROUNDS` choose what it proves.
 
 ## Runtime and keys
 
