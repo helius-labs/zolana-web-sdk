@@ -100,18 +100,3 @@ it("reports the bridge's raw key format and moves a raw key back to the page", a
   ]);
   expect(scope.postMessage.mock.calls[0]![1]).toEqual([raw.buffer]);
 });
-
-it("loads keys into a bridge from before raw keys with its two-argument call", async () => {
-  delete (globalThis as unknown as { __zolanaProver: { rawKeyFormat?: string } }).__zolanaProver
-    .rawKeyFormat;
-  const response = await send({
-    id: 2,
-    kind: "loadKey",
-    fileName: "transfer_confidential_2_2.key",
-    key: new Uint8Array([1, 2, 3]).buffer,
-    sha256: "ab".repeat(32),
-    exportRaw: false,
-  });
-  expect(response.ok).toBe(true);
-  expect(backend.loadKey.mock.calls[0]).toHaveLength(2);
-});

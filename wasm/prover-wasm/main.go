@@ -152,7 +152,7 @@ func (r *registry) loadKey(args []js.Value) any {
 	}
 
 	// A compressed container is rewritten with raw points on the kernel's
-	// thread pool when the runtime has it: a wide key then loads in seconds
+	// thread pool when the worker loaded it: a wide key then loads in seconds
 	// instead of tens, and the result is the raw form the host caches.
 	var rawForm []byte
 	if points := kernelDecompressor(); points != nil && compressedContainer(raw) {
