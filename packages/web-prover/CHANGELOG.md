@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1-alpha — 2026-10-20
+
+The first release published from CI, by the repository's `Publish` workflow, with npm provenance that links the package to the commit and workflow run that built it. No change to the API, the runtime or the proving keys.
+
 ## 0.3.0-alpha — 2026-10-20
 
 The runtime ships in the package: an app installs it with npm, its bundler emits the worker, the Go bridge and the accelerator, and threaded proving works in a Chrome extension page.

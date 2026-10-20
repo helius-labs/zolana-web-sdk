@@ -14,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@heliuslabs/zolana-web-prover": "^0.3.0-alpha",
+    "@heliuslabs/zolana-web-prover": "^0.3.1-alpha",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
