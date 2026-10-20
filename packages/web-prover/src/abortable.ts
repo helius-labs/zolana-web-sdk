@@ -20,3 +20,9 @@ export function abortable<T>(work: Promise<T>, signal?: AbortSignal): Promise<T>
     else signal.addEventListener("abort", abort, { once: true });
   });
 }
+
+/** Rethrows a cancellation, so a caller that swallows other errors still stops. */
+export function rethrowAbort(error: unknown, signal?: AbortSignal): void {
+  signal?.throwIfAborted();
+  if (error instanceof Error && error.name === "AbortError") throw error;
+}
