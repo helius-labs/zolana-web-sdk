@@ -10,20 +10,21 @@ if (!/^\d+\.\d+\.\d+$/.test(version || "") || !stagingArgument || !outputArgumen
 const staging = resolve(stagingArgument);
 const output = resolve(outputArgument);
 const required = [
-  "examples/browser/public/prover/zolana-prover.wasm",
-  "examples/browser/public/prover/accelerator/gnark_kernel.js",
-  "examples/browser/public/prover/accelerator/gnark_kernel_bg.wasm",
-  "examples/browser/public/prover/accelerator/LICENSE-APACHE",
-  "examples/browser/public/prover/accelerator/LICENSE-MIT",
-  "packages/web-prover/src/vendor/wasm_exec.js",
+  "accelerator/gnark_kernel.js",
+  "accelerator/gnark_kernel.d.ts",
+  "accelerator/gnark_kernel_bg.wasm",
+  "accelerator/LICENSE-APACHE",
+  "accelerator/LICENSE-MIT",
 ];
 for (const path of required) {
   if (!(await stat(join(staging, path))).isFile()) throw new Error(`Missing runtime file: ${path}`);
 }
 
 const files = (await walk(staging)).sort();
-if (!files.some((path) => path.includes("/snippets/") && basename(path) === "workerHelpers.no-bundler.js")) {
-  throw new Error("Mopro accelerator is missing the Rayon worker helper");
+const helpers = files.filter((path) => path.includes("/snippets/") && basename(path) === "workerHelpers.js");
+if (helpers.length !== 1) throw new Error("Mopro accelerator is missing the Rayon worker helper");
+if (!(await readFile(join(staging, helpers[0]), "utf8")).includes("import('../../../gnark_kernel.js')")) {
+  throw new Error("The Rayon worker helper must import the kernel by its file name");
 }
 
 await rm(output, { recursive: true, force: true });
@@ -49,7 +50,6 @@ const manifest = {
     zolanaRevision: requiredEnvironment("ZOLANA_REVISION"),
     moproRepository: "https://github.com/sergeytimoshin/mopro.git",
     moproRevision: requiredEnvironment("MOPRO_REVISION"),
-    go: requiredEnvironment("GO_VERSION"),
     rustToolchain: requiredEnvironment("RUST_TOOLCHAIN"),
     wasmPack: requiredEnvironment("WASM_PACK_VERSION"),
   },

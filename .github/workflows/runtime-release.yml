@@ -16,10 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 1.27.1
-          cache-dependency-path: wasm/go.sum
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-11-15
@@ -29,8 +25,9 @@ jobs:
         run: cargo install wasm-pack --version 0.15.0 --locked
       - name: Check out pinned Mopro
         run: |
+          revision="$(sed -n 's/^mopro_revision="\(.*\)"$/\1/p' scripts/build-runtime-release.sh)"
           git clone --filter=blob:none https://github.com/sergeytimoshin/mopro.git "$RUNNER_TEMP/mopro"
-          git -C "$RUNNER_TEMP/mopro" checkout 2bb184c23463d6415ebb5c9110bfd779df910d2f
+          git -C "$RUNNER_TEMP/mopro" checkout "$revision"
       - name: Build runtime assets
         env:
           ZOLANA_REVISION: ${{ github.sha }}
@@ -43,7 +40,7 @@ jobs:
           test ! -z "$VERSION"
           gh release create "runtime-v$VERSION" "dist/runtime-v$VERSION/"* \
             --title "Web prover runtime v$VERSION" \
-            --notes "Checksummed Zolana Go prover and pinned Mopro browser accelerator. See runtime-manifest.json for provenance."
+            --notes "Checksummed Mopro browser accelerator, built with Rayon's helpers for bundlers. See runtime-manifest.json for provenance."
       - name: Print manifest lock values
         env:
           VERSION: ${{ inputs.version }}
