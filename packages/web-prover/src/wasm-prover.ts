@@ -22,7 +22,7 @@ import { type ShapeKey } from "./shapes.js";
 
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
 export type WorkerRequest =
-  | Readonly<{ id: number; kind: "init"; wasmUrl: string; threads: number }>
+  | Readonly<{ id: number; kind: "init"; threads: number }>
   | Readonly<{
       id: number;
       kind: "loadKey";
@@ -56,14 +56,12 @@ export type WorkerResponse = Readonly<{
 }>;
 
 export interface WasmProverOptions {
-  /** URL of `zolana-prover.wasm`, as installed by `zolana-prover-assets`. */
-  readonly wasmUrl: string;
   /** Omit to choose automatically; zero selects the original Go prover. */
   readonly threads?: number;
   /**
    * Where proving keys are fetched from. Omit it to use the pinned key set on
    * the Zolana CDN, which serves them with CORS; set it to self-host or mirror
-   * them, as `zolana-prover-assets --keys` installs.
+   * them, as `zolana-prover-keys` installs.
    */
   readonly keyBaseUrl?: string;
   /** The prover URL handed to the SDK; requests to it are intercepted. */
@@ -183,7 +181,6 @@ export class WasmProver {
     });
     const initialization = this.#call({
       kind: "init",
-      wasmUrl: this.#options.wasmUrl,
       threads: this.#options.threads ?? automaticProvingThreads(),
     })
       .then((ready) => {
@@ -612,7 +609,8 @@ export class WasmProver {
 }
 
 function createProverWorker(): Worker {
-  return new Worker(new URL("./prover.worker.ts", import.meta.url), {
+  // The compiled worker, which the app's bundler emits with the runtime beside it.
+  return new Worker(new URL("./prover.worker.js", import.meta.url), {
     type: "module",
     name: "zolana-web-prover",
   });

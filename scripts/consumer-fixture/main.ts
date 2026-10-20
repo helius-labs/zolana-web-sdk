@@ -39,7 +39,6 @@ window.checkPackedProver = async () => {
   }
   for (const threads of [0, 2]) {
     const prover = new ZolanaWebProver({
-      wasmUrl: "/prover/zolana-prover.wasm",
       keyBaseUrl: "/keys",
       proverUrl: location.origin + "/local",
       threads,

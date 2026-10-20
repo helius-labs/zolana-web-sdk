@@ -21,10 +21,13 @@
     "test:go": "cd wasm && go test ./...",
     "dev": "npm run dev --workspace @zolana/browser-example",
     "dev:wallet": "npm run dev --workspace @zolana/wallet-example",
-    "setup": "npm run build:prover && node ./scripts/setup-assets.mjs",
+    "setup": "npm run build:prover && node ./scripts/install-keys.mjs --output examples/browser/public/keys --keys transfer_confidential_2_2.key",
     "build:wasm": "./scripts/build-wasm.sh",
-    "build:runtime": "./scripts/build-runtime-release.sh",
-    "stage:assets": "node ./scripts/stage-assets.mjs"
+    "build:runtime": "./scripts/build-runtime-release.sh"
+  },
+  "devDependencies": {
+    "@puppeteer/browsers": "^3.2.5",
+    "webpack": "^5.112.0"
   },
   "engines": {
     "node": ">=24"

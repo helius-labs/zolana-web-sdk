@@ -2,7 +2,7 @@
 
 Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
 
-**Performance.** With runtime 0.3.1 in Chrome at four threads on an Apple M5 Pro, a warm proof (key loaded, nothing to download) takes 0.20 s for one note to two outputs, 0.31 s for two, 0.54 s for four, 0.97 s for eight, 1.8 s for sixteen and 2.7 s for twenty-four; the first proof after a page reload adds the key's load from the raw-key cache (0.08 s to 1.8 s), and the first ever its download (9 MB to 180 MB). CI benches every pull request on four-core runners, about 3.5 times slower than that machine, and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+**Performance.** With runtime 0.3.2 in Chrome at four threads on an Apple M5 Pro, a warm proof (key loaded, nothing to download) takes 0.20 s for one note to two outputs, 0.31 s for two, 0.54 s for four, 0.97 s for eight, 1.8 s for sixteen and 2.7 s for twenty-four; the first proof after a page reload adds the key's load from the raw-key cache (0.08 s to 1.8 s), and the first ever its download (9 MB to 180 MB). CI benches every pull request on four-core runners, about 3.5 times slower than that machine, and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Packages
 
@@ -21,7 +21,7 @@ npm run dev         # the benchmark
 npm run dev:wallet  # the wallet example, after its setup in examples/wallet/README.md
 ```
 
-`npm run setup` builds the sanitized Go bridge with Go 1.27.1 and stages the demo request fixture, then downloads and verifies the pinned accelerator and the 2-input/2-output proving key. Source builds require Go; installed-package users need only Node.js and the asset command, not Go, Rust, Mopro or `wasm-pack`. Setup never restores the old pinned release's Go Wasm, shim or request fixture.
+`npm run setup` builds the package, with the sanitized Go bridge built by Go 1.27.1 and the pinned accelerator fetched from its runtime release and checked against `runtime.lock.json`, stages the request fixtures, and installs the 2-input/2-output proving key for the benchmark. Source builds require Go; an app that installs the package needs only its bundler, not Go, Rust, Mopro or `wasm-pack`.
 
 The demo requires cross-origin isolation for the threaded Mopro kernel. Its Vite server already sends the required COOP/COEP headers.
 
@@ -35,7 +35,7 @@ npm run test:consumer
 
 The browser test starts and stops its own Vite server. CI runs only these hermetic gates; the wallet example's devnet test, run by hand with a funded key, is the end-to-end check with requests the SDK builds. Set `DEMO_URL` only when testing an already-running deployment.
 
-The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, and runs production-built Go and Arkworks proofs with malformed-witness privacy and recovery checks. It needs Chrome and the staged runtime/key assets. Existing Go, example and browser gates remain enabled.
+The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages and with no asset step, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, builds an app with Vite and with webpack 5, and runs Go and Arkworks proofs from both builds and from the Vite build loaded as an MV3 extension page, with malformed-witness privacy and recovery checks. It needs Chrome, and installs Chrome for Testing under `target/` for the extension, which branded Chrome no longer loads from the command line.
 
 The opt-in devnet gate runs the example's shield, split, transfer and unshield flow through the published SDK. The packaged worker produces every proof locally, and the test fails unless each proof lands on-chain:
 
@@ -65,34 +65,26 @@ The requests are `wasm/prover-wasm/testdata/transfer-*.json` and `merge-*.json`,
 
 ## Runtime releases
 
-The accelerator runtime is built by maintainers and published as a versioned GitHub release. `runtime.lock.json` pins the release manifest by SHA-256, while the manifest pins every downloaded runtime file. The Go bridge and matching shim are rebuilt from this repository for each SDK build and bundled in the npm artifact; setup ignores their older release copies. Proving keys are fetched from their immutable CloudFront prefix and checked against `wasm/prover/provingkeys/proving-keys.lock`.
+The accelerator is built by maintainers and published as a versioned GitHub release, with Rayon's thread helpers for bundlers: Mopro's template builds the helpers for pages without one, which start their threads from `blob:` URLs that extension pages refuse. `runtime.lock.json` pins the release manifest by SHA-256, and the manifest pins every file; `npm run build:prover` fetches and checks them into the package, beside the Go bridge and shim it builds from this repository. Proving keys are fetched from their immutable CloudFront prefix and checked against `wasm/prover/provingkeys/proving-keys.lock`.
 
 To rebuild runtime assets manually, use the pinned Mopro checkout and the committed build script:
 
 ```sh
 git clone https://github.com/sergeytimoshin/mopro.git /tmp/mopro
 git -C /tmp/mopro checkout d352504704d83c5a4a2eae9d42d7db9b4ab3f80e
-npm run build:runtime -- 0.3.1 /tmp/mopro
+npm run build:runtime -- 0.3.2 /tmp/mopro
 ```
 
-Maintainers can run the `Runtime release` GitHub Actions workflow instead. After publishing a new runtime, update the version, release URL, size, and SHA-256 in `runtime.lock.json` before changing the SDK default.
-
-For local development with already-built Mopro bindings and keys, `npm run stage:assets -- <MoproWasmBindings> <keys-directory>` remains available.
+Maintainers can run the `Runtime release` GitHub Actions workflow instead. After publishing a new runtime, update the version, release URL, size, and SHA-256 in `runtime.lock.json`; `ZOLANA_RUNTIME_BASE_URL` points the build at a local copy of the pinned release, as a `file://` directory.
 
 ## SDK
 
-For an installed package without this repository, run `npx --no-install zolana-prover-assets --output public`. See the [package guide](packages/web-prover/README.md) for asset hosting, integrity, supported bundlers, error codes and lifecycle behavior. The sanitized Go bridge ships in the package; the accelerator and proving keys are downloaded only when you explicitly run the asset command.
-
-The default key is demo-only 2x2. For real transfers, explicitly select the needed locked shapes, for example `--keys transfer_confidential_1_2.key,transfer_confidential_2_2.key`. This replaces the default selection; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
+Install the package and import it: the app's bundler (Vite or webpack 5) emits the worker, the Go bridge and the accelerator from it, and proving keys load from the key CDN on first use. See the [package guide](packages/web-prover/README.md) for headers, extension pages, key hosting, integrity, error codes and lifecycle behavior. To serve keys yourself, `npx zolana-prover-keys --output public/keys --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key` installs the shapes you name, checked against the lockfile; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
 
 ```ts
 import { ZolanaWebProver } from "@heliuslabs/zolana-web-prover";
 
-const prover = new ZolanaWebProver({
-  wasmUrl: "/prover/zolana-prover.wasm",
-  keyBaseUrl: "/keys",
-  proverUrl: "http://localhost:3001",
-});
+const prover = new ZolanaWebProver({ proverUrl: "http://localhost:3001" });
 
 const { proof, proveMs, verifyMs } = await prover.proveRequest(requestJson);
 const localFetch = prover.createFetch();
@@ -100,4 +92,4 @@ const localFetch = prover.createFetch();
 
 The worker starts automatically on first use. Pass an `AbortSignal` to cancel queued or active work. Active cancellation discards the runtime and its queue; later requests can restart through the retained factory. `terminate()` releases the runtime and clears that factory, so create a new instance or explicitly call `start(factory)` afterward.
 
-Flow, submission and benchmark helpers are in `examples/browser/src/{flow,submit,bench,sweep-amounts}.ts`; they are intentionally no longer core exports. The pinned accelerator release remains unchanged; builds package the sanitized Go bridge locally, without publishing or replacing a remote release.
+Flow, submission and benchmark helpers are in `examples/browser/src/{flow,submit,bench,sweep-amounts}.ts`; they are intentionally no longer core exports.

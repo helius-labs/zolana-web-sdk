@@ -1,6 +1,6 @@
 {
   "name": "@heliuslabs/zolana-web-prover",
-  "version": "0.2.0-alpha",
+  "version": "0.3.0-alpha",
   "description": "Local Zolana Groth16 proving for browsers.",
   "license": "Apache-2.0",
   "repository": {
@@ -14,7 +14,7 @@
   ],
   "type": "module",
   "bin": {
-    "zolana-prover-assets": "dist/scripts/setup-assets.mjs"
+    "zolana-prover-keys": "dist/scripts/install-keys.mjs"
   },
   "exports": {
     ".": {
@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "build": "../../scripts/build-wasm.sh && vite build && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
+    "build": "rm -rf dist && ../../scripts/build-wasm.sh && node ../../scripts/fetch-runtime.mjs && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate:keys": "node scripts/generate-key-digests.ts",
     "test": "vitest run"

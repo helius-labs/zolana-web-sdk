@@ -110,7 +110,6 @@ async function fixture(
 ) {
   const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
   const prover = new WasmProver({
-    wasmUrl: "/prover/test.wasm",
     keyBaseUrl: "/keys",
     proverUrl: "http://localhost:3001",
     onMeasurement,
@@ -844,7 +843,6 @@ describe("key source", () => {
   it("fetches keys from the pinned CDN folder unless keyBaseUrl is set", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(key));
     const prover = new WasmProver({
-      wasmUrl: "/prover/test.wasm",
       proverUrl: "http://localhost:3001",
       fetch,
     });

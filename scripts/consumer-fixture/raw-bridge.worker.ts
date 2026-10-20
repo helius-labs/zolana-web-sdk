@@ -13,14 +13,14 @@ const runtime = globalThis as unknown as {
 
 globalThis.addEventListener("message", async (event: MessageEvent<string>) => {
   try {
-    const shimUrl = "/raw-wasm-exec.js";
+    const shimUrl = "/raw/wasm_exec.js";
     await import(/* @vite-ignore */ shimUrl);
     const ready = new Promise<void>((resolve) => {
       runtime.__zolanaProverReady = resolve;
     });
     const go = new runtime.Go();
     const { instance } = await WebAssembly.instantiateStreaming(
-      fetch("/prover/zolana-prover.wasm"),
+      fetch("/raw/zolana-prover.wasm"),
       go.importObject,
     );
     void go.run(instance);

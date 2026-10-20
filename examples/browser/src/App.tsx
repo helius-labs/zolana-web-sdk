@@ -106,7 +106,6 @@ export function App(): React.ReactElement {
       let instance = runtime.current;
       if (instance === undefined) {
         instance = new WasmProver({
-          wasmUrl: `${import.meta.env.VITE_ZOLANA_WASM_URL ?? `${import.meta.env.BASE_URL}prover`}/zolana-prover.wasm`,
           keyBaseUrl: import.meta.env.VITE_ZOLANA_KEYS_URL ?? `${import.meta.env.BASE_URL}keys`,
           // Required by the shared transport; this page calls proveRequest directly.
           proverUrl: new URL("prove", location.href).href,

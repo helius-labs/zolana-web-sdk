@@ -1,14 +1,11 @@
 {
   "format": 1,
-  "version": "0.3.1",
-  "baseUrl": "https://github.com/helius-labs/zolana-web-sdk/releases/download/runtime-v0.3.1/",
+  "version": "0.3.2",
+  "baseUrl": "https://github.com/helius-labs/zolana-web-sdk/releases/download/runtime-v0.3.2/",
   "manifest": {
     "asset": "runtime-manifest.json",
-    "size": 2456,
-    "sha256": "b57006134f0502d726b15a875b3a05dc7bff5329014e1422882aa09cdf6eba7b"
+    "size": 1725,
+    "sha256": "31cd80809362c75282af9934622e0465890c4480df63ed4ea6e6eb2bdc713d08"
   },
-  "provingKeysBaseUrl": "https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/3a1c88f90f609eb1/",
-  "requiredKeys": [
-    "transfer_confidential_2_2.key"
-  ]
+  "provingKeysBaseUrl": "https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/3a1c88f90f609eb1/"
 }
