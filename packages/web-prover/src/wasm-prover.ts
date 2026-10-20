@@ -100,7 +100,8 @@ export class WasmProver {
   #factory: (() => Worker) | undefined;
   #initialization: Promise<void> | undefined;
   #lifetime = new AbortController();
-  #rawKeyFormat: string | undefined;
+  /** The encoding of the raw keys the started worker's bridge exports and accepts. */
+  #rawKeyFormat = "";
   #cachePrepared = false;
   #nextId = 1;
   #queue: Promise<unknown> = Promise.resolve();
@@ -257,8 +258,7 @@ export class WasmProver {
     await this.#ensureStarted(signal);
     const expected = KEY_DIGESTS[shape.keyFile];
     const cache = await this.#openKeyCache(signal);
-    if (expected === undefined || cache === undefined || this.#rawKeyFormat === undefined)
-      return false;
+    if (expected === undefined || cache === undefined) return false;
     const url = this.#keyUrl(shape);
     const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
     return (
@@ -384,7 +384,7 @@ export class WasmProver {
     expected: KeyDigest,
     cache: Cache | undefined,
   ): Promise<WorkerResponse> {
-    const exportRaw = !key.raw && cache !== undefined && this.#rawKeyFormat !== undefined;
+    const exportRaw = !key.raw && cache !== undefined;
     return this.#call(
       {
         kind: "loadKey",
@@ -407,14 +407,13 @@ export class WasmProver {
     expected: KeyDigest,
     signal: AbortSignal,
   ): Promise<KeyBytes | undefined> {
-    const format = this.#rawKeyFormat;
-    if (cache === undefined || format === undefined) return undefined;
+    if (cache === undefined) return undefined;
     const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
     if (hit === undefined) return undefined;
     const digest = hit.headers.get(rawDigestHeader);
     if (
       hit.headers.get(rawSourceHeader) === expected.sha256 &&
-      hit.headers.get(rawFormatHeader) === format &&
+      hit.headers.get(rawFormatHeader) === this.#rawKeyFormat &&
       digest !== null
     ) {
       const bytes = await optionalCache(() => hit.arrayBuffer(), signal);
@@ -466,13 +465,11 @@ export class WasmProver {
     raw: Uint8Array<ArrayBuffer>,
     signal: AbortSignal,
   ): Promise<void> {
-    const format = this.#rawKeyFormat;
-    if (format === undefined) return;
     const digest = await abortable(sha256Hex(raw), signal);
     const headers = {
       "content-type": "application/octet-stream",
       [rawSourceHeader]: expected.sha256,
-      [rawFormatHeader]: format,
+      [rawFormatHeader]: this.#rawKeyFormat,
       [rawDigestHeader]: digest,
     };
     const stored = await optionalCache(async () => {

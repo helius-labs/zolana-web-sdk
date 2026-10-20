@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0-alpha — unreleased
+## 0.2.0-alpha — 2026-10-20
 
 The first published release. Proofs are made by zopro, a Rust Groth16 prover for gnark's circuits: one WebAssembly module that turns a `/prove` request into the circuit's witness, proves on a thread pool and on WebGPU where the browser has it, and verifies the proof before it returns it. A warm 2x2 proof takes 0.08 s at four threads on an Apple M5 Pro with WebGPU, 8x2 0.17 s and 24x2 0.43 s; on the CPU alone 0.28 s, 0.87 s and 2.6 s. Keys load in a fraction of a second after a shape's first use, are checked against digests bundled in the package, and can be fetched ahead of a proof with progress reporting.
 
