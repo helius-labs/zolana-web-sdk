@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the prover runtime, zopro-zolana for the browser, at the zopro
-# revision runtime.lock.json pins, into dist/runtime with a manifest of its
-# files (path, size, sha256). The package bundles it and `npm run setup`
+# repository, path and revision runtime.lock.json pins, into dist/runtime
+# with a manifest of its files (path, size, sha256). The package bundles it and `npm run setup`
 # installs it under examples/browser/public/prover. ZOPRO_DIR builds from
 # a checkout instead of a clone; the manifest records its revision.
 #
@@ -28,6 +28,8 @@ else
   git -C "$zopro" fetch -q --depth=1 origin "$revision"
   git -C "$zopro" checkout -q FETCH_HEAD
   built="$revision"
+  # zopro lives in a directory of the repository.
+  zopro="$zopro/$(pin zopro.path)"
 fi
 target="${CARGO_TARGET_DIR:-$root/target/zopro-wasm}"
 

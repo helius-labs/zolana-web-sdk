@@ -1,8 +1,9 @@
 {
   "format": 2,
   "zopro": {
-    "repository": "https://github.com/helius-labs/zopro.git",
-    "revision": "c183aee9b44da3d4cf16646b154dd1ee85a6f38e"
+    "repository": "https://github.com/helius-labs/zk-tools.git",
+    "path": "zopro",
+    "revision": "ec19572a61b198090ab4b2140de326dcfc4afb37"
   },
   "rustToolchain": "nightly-2025-11-15",
   "wasmBindgen": "0.2.128"
