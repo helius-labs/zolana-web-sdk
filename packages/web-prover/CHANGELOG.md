@@ -2,7 +2,7 @@
 
 ## 0.3.1-alpha — 2026-10-20
 
-The first release published from CI, by the repository's `Publish` workflow, with npm provenance that links the package to the commit and workflow run that built it. No change to the API, the runtime or the proving keys.
+- Published with npm provenance. No code changes.
 
 ## 0.3.0-alpha — 2026-10-20
 
