@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Focused browser demo for local Zolana proving with Go and threaded Arkworks engines.",
   "scripts": {
-    "keys": "zolana-prover-keys --output public/keys --keys transfer_confidential_2_2.key",
+    "keys": "node ../../scripts/install-keys.mjs --output public/keys --keys transfer_confidential_2_2.key",
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
