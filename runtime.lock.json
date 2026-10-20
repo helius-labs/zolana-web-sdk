@@ -6,6 +6,5 @@
     "asset": "runtime-manifest.json",
     "size": 1760,
     "sha256": "06526381366711dea7fc63b3ea937077494b311371deb12857e997991b25da55"
-  },
-  "provingKeysBaseUrl": "https://d3gbdb0egjwcw9.cloudfront.net/proving-keys/3a1c88f90f609eb1/"
+  }
 }

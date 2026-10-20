@@ -14,7 +14,7 @@
     "build": "npm run build:prover && npm run build:example && npm run build:wallet",
     "types": "npm run types --workspace @heliuslabs/zolana-web-prover",
     "typecheck": "npm run types && npm run typecheck --workspace @heliuslabs/zolana-web-prover && npm run typecheck --workspace @zolana/browser-example && npm run typecheck --workspace @zolana/wallet-example",
-    "test": "npm run test --workspace @heliuslabs/zolana-web-prover && npm run test --workspace @zolana/browser-example && node --test scripts/*.test.mjs",
+    "test": "npm run test --workspace @heliuslabs/zolana-web-prover && npm run test --workspace @zolana/browser-example && node --test scripts/*.test.mjs packages/web-prover/scripts/*.test.mjs",
     "test:go": "cd wasm && go test ./...",
     "test:browser": "npm run test:browser --workspace @zolana/browser-example",
     "test:consumer": "node scripts/test-packed-consumer.mjs",
@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@puppeteer/browsers": "^3.2.5",
+    "vite": "^8.1.5",
     "webpack": "^5.112.0"
   },
   "engines": {

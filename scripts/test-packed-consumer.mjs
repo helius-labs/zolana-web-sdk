@@ -66,9 +66,7 @@ try {
   for (const [packaged, source] of [
     ["dist/runtime/zolana-prover.wasm", "packages/web-prover/src/runtime/zolana-prover.wasm"],
     ["dist/runtime/accelerator/gnark_kernel_bg.wasm", "packages/web-prover/src/runtime/accelerator/gnark_kernel_bg.wasm"],
-    ["dist/scripts/install-keys.mjs", "scripts/install-keys.mjs"],
-    ["dist/runtime.lock.json", "runtime.lock.json"],
-    ["dist/wasm/prover/provingkeys/proving-keys.lock", "wasm/prover/provingkeys/proving-keys.lock"],
+    ["dist/scripts/install-keys.mjs", "packages/web-prover/scripts/install-keys.mjs"],
   ]) {
     assert.deepEqual(await readFile(join(installed, packaged)), await readFile(join(root, source)), packaged);
   }
