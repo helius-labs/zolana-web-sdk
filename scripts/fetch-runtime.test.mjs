@@ -17,8 +17,12 @@ async function fixture(context, files) {
   context.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "scripts"), { recursive: true });
   await mkdir(join(root, "release"), { recursive: true });
-  for (const name of ["fetch-runtime.mjs", "assets.mjs"])
-    await copyFile(new URL(`./${name}`, import.meta.url), join(root, "scripts", name));
+  await copyFile(new URL("./fetch-runtime.mjs", import.meta.url), join(root, "scripts/fetch-runtime.mjs"));
+  await mkdir(join(root, "packages/web-prover/scripts"), { recursive: true });
+  await copyFile(
+    new URL("../packages/web-prover/scripts/assets.mjs", import.meta.url),
+    join(root, "packages/web-prover/scripts/assets.mjs"),
+  );
   const entries = [];
   for (const [destination, text] of Object.entries(files)) {
     const bytes = Buffer.from(text);
@@ -36,7 +40,6 @@ async function fixture(context, files) {
       version: "0.9.9",
       baseUrl,
       manifest: { asset: "runtime-manifest.json", ...digest(manifest) },
-      provingKeysBaseUrl: "https://keys.invalid/",
     }),
   );
   const runtime = join(root, "runtime");

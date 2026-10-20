@@ -23,16 +23,17 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && ../../scripts/build-wasm.sh && node ../../scripts/fetch-runtime.mjs && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
-    "types": "node ../../scripts/fetch-runtime.mjs && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate:keys": "node scripts/generate-key-digests.ts",
+    "build": "rm -rf dist && ../../scripts/build-wasm.sh && node ../../scripts/fetch-runtime.mjs && npm run generate:keys && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
+    "types": "node ../../scripts/fetch-runtime.mjs && npm run generate:keys && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "pretypecheck": "npm run generate:keys",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run generate:keys",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   },
   "publishConfig": {

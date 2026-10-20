@@ -14,8 +14,7 @@ function digest(bytes) {
 async function fixture(context) {
   const root = await mkdtemp(join(tmpdir(), "zolana-keys-test-"));
   context.after(() => rm(root, { recursive: true, force: true }));
-  for (const path of ["scripts", "keys", "mirror", "wasm/prover/provingkeys"])
-    await mkdir(join(root, path), { recursive: true });
+  for (const path of ["scripts", "keys", "mirror"]) await mkdir(join(root, path), { recursive: true });
   for (const name of ["install-keys.mjs", "assets.mjs"])
     await copyFile(new URL(`./${name}`, import.meta.url), join(root, "scripts", name));
   const bytes = Buffer.from("synthetic proving key");
@@ -23,18 +22,16 @@ async function fixture(context) {
     await writeFile(join(root, "keys", name), bytes);
     await writeFile(join(root, "mirror", name), bytes);
   }
+  // The digests the package bundles, beside which the command runs.
   const keysUrl = pathToFileURL(`${join(root, "keys")}/`).href;
-  await writeFile(join(root, "runtime.lock.json"), JSON.stringify({ provingKeysBaseUrl: keysUrl }));
+  const digests = {
+    "transfer_confidential_2_2.key": digest(bytes),
+    "transfer_confidential_1_2.key": digest(bytes),
+    "merge_8_1.key": digest(bytes),
+  };
   await writeFile(
-    join(root, "wasm/prover/provingkeys/proving-keys.lock"),
-    JSON.stringify({
-      keys: {
-        "transfer_confidential_2_2.key": digest(bytes),
-        "transfer_confidential_1_2.key": digest(bytes),
-        "merge_8_1.key": digest(bytes),
-        "batch_address-append_40_10.key": digest(bytes),
-      },
-    }),
+    join(root, "key-digests.js"),
+    `export const KEY_BASE_URL = ${JSON.stringify(keysUrl)};\nexport const KEY_DIGESTS = ${JSON.stringify(digests)};\n`,
   );
   const output = join(root, "app/public/keys");
   const run = (args, env = {}) =>

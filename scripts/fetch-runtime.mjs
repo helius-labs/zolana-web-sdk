@@ -3,7 +3,7 @@
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existingFileMatches, loadAsset, matchesEntry, verifyBytes, writeAtomically } from "./assets.mjs";
+import { existingFileMatches, loadAsset, matchesEntry, verifyBytes, writeAtomically } from "../packages/web-prover/scripts/assets.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const runtime = process.env.ZOLANA_RUNTIME_DIR || join(root, "packages/web-prover/src/runtime");

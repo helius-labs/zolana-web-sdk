@@ -109,30 +109,8 @@ for module in go github.com/consensys/gnark github.com/consensys/gnark-crypto; d
   [[ "$got" == "$want" ]] || fail "wasm/go.mod pins $module $got, upstream uses $want"
 done
 
-# The key lock the bridge embeds is also what shapes.ts lists and the key CDN serves;
-# key-digests.ts, which carries the sizes, is checked against the lock by its test.
+# The key lock the bridge embeds, which the package's digests and the SDK's pins are checked against.
 keys="$wasm/prover/provingkeys/proving-keys.lock"
-python3 - "$keys" "$root/runtime.lock.json" "$root/packages/web-prover/src/shapes.ts" "$(upstream prover/server/prover/common/key_downloader.go | grep -o 'defaultProvingKeysBaseURL = "[^"]*"' | cut -d'"' -f2)" <<'PY' || failed=1
-import json, re, sys
-lock, runtime, shapes, base = sys.argv[1:]
-keys = json.load(open(lock))["keys"]
-prefix = json.load(open(lock))["prefix"]
-rt = json.load(open(runtime))
-want = f"{base}/{prefix}/"
-ok = True
-def fail(m):
-    global ok; ok = False; print("drift:", m, file=sys.stderr)
-if rt["provingKeysBaseUrl"] != want: fail(f"runtime.lock.json provingKeysBaseUrl is {rt['provingKeysBaseUrl']}, lock prefix wants {want}")
-src = open(shapes).read()
-listed = {f"transfer_confidential_{i}_{o}.key" for i, o in re.findall(r"\bentry\((\d+), (\d+)\)", src)}
-listed |= {f"merge_{i}_1.key" for i in re.findall(r"\bmergeEntry\((\d+)\)", src)}
-if not listed: fail("shapes.ts lists no shapes; the parser no longer matches it")
-for k in listed:
-    if k not in keys: fail(f"shapes.ts lists {k}, absent from proving-keys.lock")
-for k in keys:
-    if re.fullmatch(r"transfer_confidential_\d+_\d+\.key|merge_\d+_1\.key", k) and k not in listed: fail(f"proving-keys.lock has {k}, missing from shapes.ts")
-sys.exit(0 if ok else 1)
-PY
 
 # The wallet example's SDK is the pinned release, and it verifies against our keys.
 pinned="$(json "$root/examples/wallet/package.json" dependencies | python3 -c 'import ast, sys; print(ast.literal_eval(sys.stdin.read())["@heliuslabs/zolana"])')"
