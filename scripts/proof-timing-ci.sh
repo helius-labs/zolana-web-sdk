@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The proof timing report of a CI run: each runner's timing log under
 # ZOLANA_TIMING_DIR/<label>/, against that runner's last report in the
-# history of `main` (scripts/proof-timing-history.sh), into the job summary,
+# history of `main` (scripts/proof-timing-history.sh) on the same processor,
+# for the runners ZOLANA_TIMING_COMPARE names, into the job summary,
 # a report.json per runner, ZOLANA_TIMING_DIR/report.md, and one comment on
 # the pull request, updated in place.
 #
@@ -24,16 +25,24 @@ if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
   else
     after="\`main\` at [\`${GITHUB_SHA:0:7}\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)"
   fi
-  # Each runner against its last report of main before this commit: a rerun
+  # Each compared runner against its last report of main before this commit
+  # on the same processor: a hosted runner lands on several processor types,
+  # and one commit takes up to twice as long on one as on another. A rerun
   # after the history took this commit compares with the one before.
   for dir in "$timing"/*/; do
     label="$(basename "$dir")"
+    if [[ " ${ZOLANA_TIMING_COMPARE:-} " != *" $label "* ]]; then
+      echo "::notice::$label is timed, not compared"
+      continue
+    fi
+    cpu="$(jq -r '.cpu // empty' "$dir/runner.json" 2> /dev/null || true)"
     if last="$(gh api "repos/$GITHUB_REPOSITORY/contents/history/$label.jsonl?ref=proof-timing" \
         -H 'Accept: application/vnd.github.raw' 2> /dev/null \
-        | jq -c --arg sha "$GITHUB_SHA" 'select(.commit != $sha)' | tail -n 1)" && [[ -n "$last" ]]; then
+        | jq -c --arg sha "$GITHUB_SHA" --arg cpu "$cpu" 'select(.commit != $sha and .runner.cpu == $cpu)' \
+        | tail -n 1)" && [[ -n "$last" && -n "$cpu" ]]; then
       printf '%s\n' "$last" > "$dir/baseline.json"
     else
-      echo "::notice::no proof timing history for $label on main yet"
+      echo "::notice::no proof timing history for $label on ${cpu:-an unnamed processor} on main yet"
     fi
   done
 fi
