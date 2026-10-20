@@ -12,6 +12,7 @@ await cp(join(source, "runtime"), join(output, "runtime"), { recursive: true });
 await copyFile(join(source, "vendor/wasm_exec.js"), join(output, "vendor/wasm_exec.js"));
 for (const path of [
   "scripts/install-keys.mjs",
+  "scripts/assets.mjs",
   "runtime.lock.json",
   "wasm/prover/provingkeys/proving-keys.lock",
   "LICENSE",

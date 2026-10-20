@@ -9,6 +9,8 @@ vendor="$root/packages/web-prover/src/vendor"
 fixtures="$root/examples/browser/public/fixtures"
 export GOTOOLCHAIN=go1.27.1
 mkdir -p "$runtime" "$vendor" "$fixtures"
+# Where the asset command of 0.2.0-alpha put the runtime; nothing reads it now.
+rm -rf "$root/examples/browser/public/prover"
 
 goroot="$(cd "$module" && go env GOROOT)"
 shim=""

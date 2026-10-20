@@ -16,7 +16,8 @@ async function fixture(context) {
   context.after(() => rm(root, { recursive: true, force: true }));
   for (const path of ["scripts", "keys", "mirror", "wasm/prover/provingkeys"])
     await mkdir(join(root, path), { recursive: true });
-  await copyFile(new URL("./install-keys.mjs", import.meta.url), join(root, "scripts/install-keys.mjs"));
+  for (const name of ["install-keys.mjs", "assets.mjs"])
+    await copyFile(new URL(`./${name}`, import.meta.url), join(root, "scripts", name));
   const bytes = Buffer.from("synthetic proving key");
   for (const name of ["transfer_confidential_2_2.key", "transfer_confidential_1_2.key", "merge_8_1.key"]) {
     await writeFile(join(root, "keys", name), bytes);

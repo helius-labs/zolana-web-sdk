@@ -12,10 +12,9 @@
 // toolchain that built the .wasm (its js/wasm ABI is not stable across Go
 // releases, so the two must ship together).
 //
-// A static import rather than a runtime load, because the alternatives are all
-// worse: `importScripts` is present in a module worker but throws when called,
-// and Vite refuses to `import()` a path under public/. Bundling it means
-// `globalThis.Go` is assigned before init() runs.
+// A static import, so the app's bundler emits it with the bridge and
+// `globalThis.Go` is assigned before init() runs; `importScripts` is present in
+// a module worker but throws when called.
 import "./vendor/wasm_exec.js";
 
 import type { WorkerRequest, WorkerResponse, WorkerFatal } from "./wasm-prover.js";

@@ -5,11 +5,13 @@ import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, w
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Browser, detectBrowserPlatform, install, resolveBuildId } from "@puppeteer/browsers";
+import { Browser, install } from "@puppeteer/browsers";
 import { Builder, logging } from "selenium-webdriver";
 import chrome from "selenium-webdriver/chrome.js";
 
 const root = await realpath(fileURLToPath(new URL("../", import.meta.url)));
+// Pinned, so two runs of one commit test the same browser; ci.yml caches it by this id.
+const chromeForTestingBuild = "155.0.8059.84";
 const consumer = await realpath(await mkdtemp(join(tmpdir(), "zolana-packed-consumer-")));
 const relativeConsumer = relative(root, consumer);
 assert.ok(
@@ -190,7 +192,7 @@ async function browser(extension) {
     if (process.env.CHROME_BIN) options.setChromeBinaryPath(process.env.CHROME_BIN);
   } else {
     const cacheDir = join(root, "target/chrome-for-testing");
-    const buildId = await resolveBuildId(Browser.CHROME, detectBrowserPlatform(), "stable");
+    const buildId = chromeForTestingBuild;
     const testing = await install({ browser: Browser.CHROME, buildId, cacheDir });
     const driver = await install({ browser: Browser.CHROMEDRIVER, buildId, cacheDir });
     options.setChromeBinaryPath(testing.executablePath);
