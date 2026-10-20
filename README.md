@@ -77,6 +77,16 @@ npm run build:runtime -- 0.3.2 /tmp/mopro
 
 Maintainers can run the `Runtime release` GitHub Actions workflow instead. After publishing a new runtime, update the version, release URL, size, and SHA-256 in `runtime.lock.json`; `ZOLANA_RUNTIME_BASE_URL` points the build at a local copy of the pinned release, as a `file://` directory.
 
+## Releasing the package
+
+A release is a pull request that sets `packages/web-prover/package.json`'s version and dates its `CHANGELOG.md` entry. After it merges, push the tag from `main`:
+
+```sh
+git tag web-prover-v0.3.1-alpha && git push origin web-prover-v0.3.1-alpha
+```
+
+The `Publish` workflow runs the checks and the consumer gate, refuses a tag that does not name the package's version, and publishes with provenance as `latest`. It authenticates through npm's trusted publishing, which the package's settings on npmjs.com must name: GitHub Actions, `helius-labs/zolana-web-sdk`, workflow `publish.yml`.
+
 ## SDK
 
 Install the package and import it: the app's bundler (Vite or webpack 5) emits the worker, the Go bridge and the accelerator from it, and proving keys load from the key CDN on first use. See the [package guide](packages/web-prover/README.md) for headers, extension pages, key hosting, integrity, error codes and lifecycle behavior. To serve keys yourself, `npx zolana-prover-keys --output public/keys --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key` installs the shapes you name, checked against the lockfile; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
