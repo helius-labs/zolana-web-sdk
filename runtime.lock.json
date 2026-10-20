@@ -3,7 +3,7 @@
   "zopro": {
     "repository": "https://github.com/helius-labs/zk-tools.git",
     "path": "zopro",
-    "revision": "ec19572a61b198090ab4b2140de326dcfc4afb37"
+    "revision": "3e38efca5c8b8005b01868e125cdf24ca62a7dae"
   },
   "rustToolchain": "nightly-2025-11-15",
   "wasmBindgen": "0.2.128"
