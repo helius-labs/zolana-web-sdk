@@ -1,9 +1,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "declaration": true,
-    "emitDeclarationOnly": true,
     "noEmit": false,
+    "declaration": true,
+    // Scripts import their siblings with .ts extensions, which only a no-emit build allows.
+    "allowImportingTsExtensions": false,
     "outDir": "dist",
     "rootDir": "src"
   },

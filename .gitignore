@@ -2,10 +2,9 @@ node_modules/
 dist/
 target/
 packages/web-prover/src/vendor/
-examples/browser/public/prover/
+packages/web-prover/src/runtime/
 examples/browser/public/keys/
 examples/browser/public/fixtures/
 *.key
 *.wasm
 .DS_Store
-examples/wallet/public/

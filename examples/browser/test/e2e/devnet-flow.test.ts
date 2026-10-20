@@ -61,7 +61,6 @@ it.skipIf(funderPath === undefined)(
     const remoteProve: string[] = [];
     const local: { proofs: number; failures: string[] } = { proofs: 0, failures: [] };
     const prover = new ZolanaWebProver({
-      wasmUrl: new URL("dist/bridge/zolana-prover.wasm", root).href,
       threads: 0,
       keyBaseUrl,
       proverUrl: endpoints.proverUrl,

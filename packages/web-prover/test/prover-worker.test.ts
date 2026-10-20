@@ -38,7 +38,7 @@ beforeEach(async () => {
     {} as WebAssembly.WebAssemblyInstantiatedSource,
   );
   await import("../src/prover.worker.js");
-  initialized = await send({ id: 1, kind: "init", threads: 0, wasmUrl: "/test.wasm" });
+  initialized = await send({ id: 1, kind: "init", threads: 0 });
   expect(initialized.ok).toBe(true);
 });
 

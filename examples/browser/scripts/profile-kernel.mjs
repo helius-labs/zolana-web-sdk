@@ -1,4 +1,8 @@
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+// The built package's runtime, which the example's dev server serves under /@fs/.
+const runtime = '/@fs' + fileURLToPath(new URL('../../../packages/web-prover/dist/runtime/', import.meta.url));
 
 // Diagnostic wrapper around the shipped kernel; no arithmetic or UI changes.
 export async function profileKernel(driver, count) {
@@ -7,20 +11,20 @@ export async function profileKernel(driver, count) {
   const lock = JSON.parse(await readFile(new URL('../../../wasm/prover/provingkeys/proving-keys.lock', import.meta.url), 'utf8'));
   const pinned = lock.keys['transfer_confidential_2_2.key'];
   await driver.manage().setTimeouts({ script: 180000 });
-  return driver.executeAsyncScript(function(code, count, pinned, done) {
+  return driver.executeAsyncScript(function(code, count, runtime, pinned, done) {
     const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
     const worker = new Worker(url, { type: 'module' });
     const finish = value => { worker.terminate(); URL.revokeObjectURL(url); done(value); };
     worker.onmessage = event => finish(event.data);
     worker.onerror = event => finish({ error: event.message });
-    worker.postMessage({ count, base: location.origin, pinned });
-  }, code, count, pinned);
+    worker.postMessage({ count, base: location.origin, runtime, pinned });
+  }, code, count, runtime, pinned);
 }
 
 function workerMain() {
-  self.onmessage = async ({ data: { count, base, pinned } }) => {
+  self.onmessage = async ({ data: { count, base, runtime, pinned } }) => {
     try {
-      const kernel = await import(base + '/prover/accelerator/gnark_kernel.js');
+      const kernel = await import(base + runtime + 'accelerator/gnark_kernel.js');
       await kernel.default();
       await kernel.initThreadPool(count);
       let phases = {};
@@ -41,7 +45,7 @@ function workerMain() {
       globalThis.__moproGnarkKernel = kernel.Key;
       const ready = new Promise(resolve => { globalThis.__zolanaProverReady = resolve; });
       const go = new globalThis.Go();
-      const { instance } = await WebAssembly.instantiateStreaming(fetch(base + '/prover/zolana-prover.wasm'), go.importObject);
+      const { instance } = await WebAssembly.instantiateStreaming(fetch(base + runtime + 'zolana-prover.wasm'), go.importObject);
       void go.run(instance);
       await ready;
       const api = globalThis.__zolanaProver;

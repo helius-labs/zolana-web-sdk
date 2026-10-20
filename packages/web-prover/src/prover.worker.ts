@@ -12,10 +12,9 @@
 // toolchain that built the .wasm (its js/wasm ABI is not stable across Go
 // releases, so the two must ship together).
 //
-// A static import rather than a runtime load, because the alternatives are all
-// worse: `importScripts` is present in a module worker but throws when called,
-// and Vite refuses to `import()` a path under public/. Bundling it means
-// `globalThis.Go` is assigned before init() runs.
+// A static import, so the app's bundler emits it with the bridge and
+// `globalThis.Go` is assigned before init() runs; `importScripts` is present in
+// a module worker but throws when called.
 import "./vendor/wasm_exec.js";
 
 import type { WorkerRequest, WorkerResponse, WorkerFatal } from "./wasm-prover.js";
@@ -41,7 +40,13 @@ interface GoRuntime {
 let api: ZolanaProverApi | undefined;
 let activeThreads = 0;
 
-async function init(wasmUrl: string, threads: number): Promise<void> {
+// The Go bridge ships beside this worker; the app's bundler emits it as a file.
+const bridgeUrl = new URL("./runtime/zolana-prover.wasm", import.meta.url);
+// Rayon's helpers wait for every thread to report ready, and a thread whose script
+// the page refuses never does; a pool that has not started by then has failed.
+const threadPoolTimeoutMs = 30_000;
+
+async function init(threads: number): Promise<void> {
   if (api !== undefined) return;
 
   if (!Number.isInteger(threads) || threads < 0 || threads > 64) {
@@ -52,11 +57,9 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
       throw new Error(
         "Threaded proving requires cross-origin isolation. Use the Vite server with COOP/COEP headers.",
       );
-    const kernelUrl = new URL("./accelerator/gnark_kernel.js", new URL(wasmUrl, self.location.href))
-      .href;
-    const kernel = await import(/* @vite-ignore */ kernelUrl);
+    const kernel = await import("./runtime/accelerator/gnark_kernel.js");
     await kernel.default();
-    await kernel.initThreadPool(threads);
+    await withTimeout(kernel.initThreadPool(threads), threadPoolTimeoutMs);
     // The Go bridge proves through the kernel and decompresses key points on its thread pool.
     Object.assign(globalThis, {
       __moproGnarkKernel: kernel.Key,
@@ -77,9 +80,9 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
   }
   const go = new GoCtor();
 
-  const response = await fetch(wasmUrl);
+  const response = await fetch(bridgeUrl);
   if (!response.ok) {
-    throw new Error(`fetching ${wasmUrl} failed: ${String(response.status)}`);
+    throw new Error(`fetching the Go bridge failed: ${String(response.status)}`);
   }
   const { instance } = await WebAssembly.instantiateStreaming(response, go.importObject);
 
@@ -101,6 +104,18 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
   api = __zolanaProver;
 }
 
+async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("the kernel's thread pool did not start")), ms);
+  });
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function requireApi(): ZolanaProverApi {
   if (api === undefined) throw new Error("prover module is not initialized; send init first");
   return api;
@@ -120,7 +135,7 @@ function unwrap(result: unknown): unknown {
 async function handle(request: WorkerRequest): Promise<unknown> {
   switch (request.kind) {
     case "init":
-      await init(request.wasmUrl, request.threads);
+      await init(request.threads);
       return { initialized: true, threads: activeThreads, rawKeyFormat: requireApi().rawKeyFormat };
     case "loadKey":
       return unwrap(

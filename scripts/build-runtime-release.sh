@@ -6,7 +6,6 @@ version="${1:-}"
 mopro="${2:-}"
 mopro_revision="d352504704d83c5a4a2eae9d42d7db9b4ab3f80e"
 rust_toolchain="nightly-2025-11-15"
-go_toolchain="go1.27.1"
 
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || -z "$mopro" ]]; then
   echo "Usage: npm run build:runtime -- <version> <pinned-mopro-checkout>" >&2
@@ -25,21 +24,31 @@ fi
 work="$(mktemp -d "${TMPDIR:-/tmp}/zolana-web-runtime.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 staging="$work/staging"
-mkdir -p \
-  "$staging/examples/browser/public/prover/accelerator" \
-  "$staging/packages/web-prover/src/vendor"
-
-echo "Building the Zolana Go prover..."
-(cd "$root/wasm" && GOTOOLCHAIN="$go_toolchain" GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -mod=readonly -trimpath -ldflags="-s -w" \
-  -o "$staging/examples/browser/public/prover/zolana-prover.wasm" ./prover-wasm)
-goroot="$(cd "$root/wasm" && GOTOOLCHAIN="$go_toolchain" go env GOROOT)"
-install -m 644 "$goroot/lib/wasm/wasm_exec.js" "$staging/packages/web-prover/src/vendor/wasm_exec.js"
+mkdir -p "$staging/accelerator"
 
 echo "Building the pinned Mopro accelerator..."
 rustup component add rust-src --toolchain "$rust_toolchain"
 (cd "$mopro/cli" && rustc --edition=2021 build.rs -o "$work/stage-templates")
 (cd "$mopro/cli" && OUT_DIR="$work/templates" "$work/stage-templates")
 accelerator="$work/templates/init-template/gnark-web/accelerator"
+# Mopro's template builds Rayon's helpers for pages without a bundler, which start
+# their threads from blob: URLs that extension pages refuse; the app's bundler emits
+# these helpers as files instead.
+replace() {
+  node -e '
+    const fs = require("node:fs");
+    const [file, from, to] = process.argv.slice(1);
+    const text = fs.readFileSync(file, "utf8");
+    if (text.split(from).length !== 2) {
+      console.error(`Expected one ${from} in ${file}`);
+      process.exit(1);
+    }
+    fs.writeFileSync(file, text.replace(from, () => to));
+  ' "$@"
+}
+replace "$accelerator/Cargo.toml" \
+  'wasm-bindgen-rayon = { version = "1.3", features = ["no-bundler"] }' \
+  'wasm-bindgen-rayon = "1.3"'
 (cd "$accelerator" && CARGO_TARGET_DIR="$work/target" rustup run "$rust_toolchain" wasm-pack build \
   --target web \
   --release \
@@ -47,16 +56,24 @@ accelerator="$work/templates/init-template/gnark-web/accelerator"
   --out-dir "$work/accelerator" \
   -- \
   --locked)
-install -m 644 "$work/accelerator/gnark_kernel.js" "$staging/examples/browser/public/prover/accelerator/gnark_kernel.js"
-install -m 644 "$work/accelerator/gnark_kernel_bg.wasm" "$staging/examples/browser/public/prover/accelerator/gnark_kernel_bg.wasm"
-cp -R "$work/accelerator/snippets" "$staging/examples/browser/public/prover/accelerator/snippets"
-install -m 644 "$accelerator/ark-bn254/LICENSE-APACHE" "$staging/examples/browser/public/prover/accelerator/LICENSE-APACHE"
-install -m 644 "$accelerator/ark-bn254/LICENSE-MIT" "$staging/examples/browser/public/prover/accelerator/LICENSE-MIT"
+# The helper imports the kernel by its directory, which webpack refuses in an ES
+# module; naming the file works in every bundler.
+helpers=("$work"/accelerator/snippets/wasm-bindgen-rayon-*/src/workerHelpers.js)
+if [[ ${#helpers[@]} != 1 || ! -f "${helpers[0]}" ]]; then
+  echo "Expected one Rayon worker helper in the accelerator build" >&2
+  exit 1
+fi
+replace "${helpers[0]}" "import('../../..')" "import('../../../gnark_kernel.js')"
+for file in gnark_kernel.js gnark_kernel.d.ts gnark_kernel_bg.wasm; do
+  install -m 644 "$work/accelerator/$file" "$staging/accelerator/$file"
+done
+cp -R "$work/accelerator/snippets" "$staging/accelerator/snippets"
+install -m 644 "$accelerator/ark-bn254/LICENSE-APACHE" "$staging/accelerator/LICENSE-APACHE"
+install -m 644 "$accelerator/ark-bn254/LICENSE-MIT" "$staging/accelerator/LICENSE-MIT"
 
 output="$root/dist/runtime-v$version"
 ZOLANA_REVISION="${ZOLANA_REVISION:-$(git -C "$root" rev-parse HEAD)}" \
 MOPRO_REVISION="$mopro_revision" \
-GO_VERSION="$(cd "$root/wasm" && GOTOOLCHAIN="$go_toolchain" go version)" \
 RUST_TOOLCHAIN="$rust_toolchain" \
 WASM_PACK_VERSION="$(wasm-pack --version)" \
 node "$root/scripts/package-runtime.mjs" "$version" "$staging" "$output"
