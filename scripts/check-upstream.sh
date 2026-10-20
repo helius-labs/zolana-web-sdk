@@ -134,9 +134,9 @@ for k in keys:
 sys.exit(0 if ok else 1)
 PY
 
-# The example's SDK is the pinned release, and it verifies against our keys.
-pinned="$(json "$root/examples/browser/package.json" dependencies | python3 -c 'import ast, sys; print(ast.literal_eval(sys.stdin.read())["@heliuslabs/zolana"])')"
-[[ "$pinned" == "$sdk" ]] || fail "examples/browser pins @heliuslabs/zolana $pinned, upstream.lock.json says $sdk"
+# The wallet example's SDK is the pinned release, and it verifies against our keys.
+pinned="$(json "$root/examples/wallet/package.json" dependencies | python3 -c 'import ast, sys; print(ast.literal_eval(sys.stdin.read())["@heliuslabs/zolana"])')"
+[[ "$pinned" == "$sdk" ]] || fail "examples/wallet pins @heliuslabs/zolana $pinned, upstream.lock.json says $sdk"
 installed="$root/node_modules/@heliuslabs/zolana"
 if [[ -d "$installed" ]]; then
   got="$(json "$installed/package.json" version)"

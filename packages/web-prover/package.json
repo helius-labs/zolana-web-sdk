@@ -24,6 +24,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && ../../scripts/build-wasm.sh && node ../../scripts/fetch-runtime.mjs && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
+    "types": "node ../../scripts/fetch-runtime.mjs && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate:keys": "node scripts/generate-key-digests.ts",
     "test": "vitest run"
