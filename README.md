@@ -8,7 +8,7 @@ Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a 
 
 - `@heliuslabs/zolana-web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
 - [`examples/wallet`](examples/wallet/README.md) is the integration example: a devnet private wallet on the published `@heliuslabs/zolana@0.4.0-alpha` that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
-- `examples/browser` is a prover benchmark. It proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, to time the Go and Arkworks engines on one proof or five.
+- `examples/browser` is the prover benchmark: it proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, to time the Go and Arkworks engines on one proof or five, and the proof timing harness drives it.
 - `@heliuslabs/zolana-web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
 - `wasm` is a self-contained Go module for the browser prover bridge.
 
@@ -21,32 +21,32 @@ npm run dev         # the benchmark
 npm run dev:wallet  # the wallet example, after its setup in examples/wallet/README.md
 ```
 
-`npm run setup` builds the package, with the sanitized Go bridge built by Go 1.27.1 and the pinned accelerator fetched from its runtime release and checked against `runtime.lock.json`, stages the request fixtures, and installs the 2-input/2-output proving key for the benchmark. Source builds require Go; an app that installs the package needs only its bundler, not Go, Rust, Mopro or `wasm-pack`.
+`npm run setup` builds the package, with the sanitized Go bridge built by Go 1.27.1 and the pinned accelerator fetched from its runtime release and checked against `runtime.lock.json`, stages the request fixtures, and installs the 2-input/2-output proving key for the benchmark (`npm run keys` in `examples/browser`). Source builds require Go; an app that installs the package needs only its bundler, not Go, Rust, Mopro or `wasm-pack`.
 
 The demo requires cross-origin isolation for the threaded Mopro kernel. Its Vite server already sends the required COOP/COEP headers.
 
 ## Validation
 
 ```sh
-npm run check
-npm run test:browser
-npm run test:consumer
+npm run typecheck   # the package's declarations and the examples, without Go
+npm run check       # unit, script and Go tests, the builds, the pack dry run
+npm run check:full  # also the browser test and the consumer gate
 ```
 
-The browser test starts and stops its own Vite server. CI runs only these hermetic gates; the wallet example's devnet test, run by hand with a funded key, is the end-to-end check with requests the SDK builds. Set `DEMO_URL` only when testing an already-running deployment.
+The browser test starts and stops its own Vite server; set `DEMO_URL` only when testing an already-running deployment. CI runs these hermetic gates; the wallet example's devnet test, run by hand with a funded key, is the end-to-end check with requests the SDK builds.
 
 The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages and with no asset step, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, builds an app with Vite and with webpack 5, and runs Go and Arkworks proofs from both builds and from the Vite build loaded as an MV3 extension page, with malformed-witness privacy and recovery checks. It needs Chrome, and installs Chrome for Testing under `target/` for the extension, which branded Chrome no longer loads from the command line.
 
-The opt-in devnet gate runs the example's shield, split, transfer and unshield flow through the published SDK. The packaged worker produces every proof locally, and the test fails unless each proof lands on-chain:
+The opt-in devnet gate drives the wallet example in Chrome: a fresh key registers, shields, sends privately, sends with an app fee and unshields through the published SDK, and every proof must be made in the page:
 
 ```sh
 npm run build:prover
 ZOLANA_E2E_FUNDER=~/.config/solana/id.json \
-ZOLANA_E2E_RPC_URL="https://devnet.helius-rpc.com/?api-key=$API_KEY" \
-npm run test:e2e
+VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=$API_KEY" \
+npm run test:devnet
 ```
 
-The funder tops up two fresh wallets with 0.06 devnet SOL and receives the remainder back. Use a keyed RPC; the public devnet endpoint rate-limits confirmation polling.
+Use a keyed RPC; the public devnet endpoint rate-limits confirmation polling.
 
 ### Proof timing
 
@@ -91,5 +91,3 @@ const localFetch = prover.createFetch();
 ```
 
 The worker starts automatically on first use. Pass an `AbortSignal` to cancel queued or active work. Active cancellation discards the runtime and its queue; later requests can restart through the retained factory. `terminate()` releases the runtime and clears that factory, so create a new instance or explicitly call `start(factory)` afterward.
-
-Flow, submission and benchmark helpers are in `examples/browser/src/{flow,submit,bench,sweep-amounts}.ts`; they are intentionally no longer core exports.

@@ -1,6 +1,6 @@
 # Upstream
 
-`upstream.lock.json` pins the published `@heliuslabs/zolana` release the browser example depends on and the `helius-labs/zolana` tag `wasm` follows, the commit that release was cut from, so the bridge accepts that SDK's `/prove` requests and proves with the keys pinned in `wasm/prover/provingkeys/proving-keys.lock`. A new SDK release re-pins both together. `scripts/check-upstream.sh` (CI job `upstream`) fails when anything below drifts from that pin.
+`upstream.lock.json` pins the published `@heliuslabs/zolana` release the wallet example depends on and the `helius-labs/zolana` tag `wasm` follows, the commit that release was cut from, so the bridge accepts that SDK's `/prove` requests and proves with the keys pinned in `wasm/prover/provingkeys/proving-keys.lock`. A new SDK release re-pins both together. `scripts/check-upstream.sh` (CI job `upstream`) fails when anything below drifts from that pin.
 
 Source mapping:
 
