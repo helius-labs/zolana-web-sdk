@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { WasmProver, type WorkerRequest, type WorkerResponse } from "../src/wasm-prover.js";
+import { beforeEach, expect, it, vi } from "vitest";
+import { WasmProver } from "../src/wasm-prover.js";
 import type { KeyProgress } from "../src/measurement.js";
 import { MERGE_SHAPES, TRANSFER_SHAPES } from "../src/shapes.js";
+import { proverTestHooks } from "./support/prover.js";
 
 // Every pinned key is these 20 MB here: three ranged parts of 8, 8 and 4 MB.
 const { key } = vi.hoisted(() => {
@@ -26,24 +27,7 @@ const rawUrl = `${pinnedUrl}?zolana-key=raw`;
 const partUrl = (index: number) => `${pinnedUrl}?zolana-key=part-${String(index)}`;
 const range = (start: number, end: number) => `bytes=${String(start)}-${String(end - 1)}`;
 
-class TestWorker extends EventTarget {
-  postMessage(request: WorkerRequest): void {
-    queueMicrotask(() => {
-      const value =
-        request.kind === "init"
-          ? { threads: 2, rawKeyFormat: "raw-test" }
-          : request.kind === "loadKey"
-            ? { key: request.fileName, raw: request.exportRaw ? new Uint8Array([7, 7, 7]) : undefined }
-            : request.kind === "prove"
-              ? '{"proof":"test"}'
-              : { valid: true };
-      const response: WorkerResponse = { id: request.id, ok: true, value, ms: 1 };
-      this.dispatchEvent(new MessageEvent("message", { data: response }));
-    });
-  }
-  terminate(): void {}
-}
-
+proverTestHooks();
 let entries: Map<string, Response>;
 
 beforeEach(() => {
@@ -55,7 +39,6 @@ beforeEach(() => {
     }),
     delete: vi.fn(async (url: string) => entries.delete(url)),
   };
-  vi.stubGlobal("Worker", TestWorker);
   vi.stubGlobal("caches", {
     open: vi.fn(async () => cache),
     keys: vi.fn(async () => []),
@@ -64,10 +47,6 @@ beforeEach(() => {
       return true;
     }),
   });
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 /**

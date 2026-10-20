@@ -22,11 +22,11 @@ export {
   WasmProver as ZolanaWebProver,
   WasmProverError,
   type WasmProverOptions,
-  type ProvingKeyStatus,
   type WorkerRequest,
   type WorkerResponse,
 } from "./wasm-prover.js";
 
+export type { ProvingKeyStatus } from "./key-store.js";
 export { automaticProvingThreads } from "./proving-threads.js";
 
 export { observeProofRequests } from "./proof-requests.js";
