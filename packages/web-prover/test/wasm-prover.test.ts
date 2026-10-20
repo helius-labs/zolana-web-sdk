@@ -124,7 +124,7 @@ beforeEach(() => {
   TestWorker.instances = [];
   TestWorker.holdInit = false;
   TestWorker.throwOnPost = false;
-  TestWorker.rawKeyFormat = undefined;
+  TestWorker.rawKeyFormat = "raw-test";
   TestWorker.rejectRaw = false;
   vi.stubGlobal("Worker", TestWorker);
   vi.stubGlobal("caches", undefined);
@@ -155,6 +155,13 @@ describe("prover lifecycle", () => {
     await Promise.all([first, second]);
     expect(prover.threads).toBe(2);
     prover.terminate();
+  });
+
+  it("rejects a worker whose bridge reports no raw key format", async () => {
+    const { prover } = await fixture();
+    TestWorker.rawKeyFormat = undefined;
+    await expect(prover.start(factory)).rejects.toMatchObject({ code: "wasm_invalid_response" });
+    expect(current().terminated).toBe(true);
   });
 
   it.each(["error", "messageerror", "fatal"])(
@@ -456,7 +463,10 @@ describe("witness privacy", () => {
 describe("best-effort proving-key cache", () => {
   function cacheFixture() {
     const cache = {
-      match: vi.fn(async () => new Response(new Uint8Array([9, 9, 9]))),
+      match: vi.fn(
+        async (_url: string): Promise<Response | undefined> =>
+          new Response(new Uint8Array([9, 9, 9])),
+      ),
       delete: vi.fn(async () => true),
       put: vi.fn(async () => {}),
     };
@@ -532,11 +542,18 @@ describe("best-effort proving-key cache", () => {
   it("uses a validated cache hit without downloading the key", async () => {
     const { prover, fetch } = await fixture();
     const { cache } = cacheFixture();
-    cache.match.mockResolvedValue(new Response(key));
+    const pinnedUrl = "/keys/transfer_confidential_2_2.key";
+    cache.match.mockImplementation(async (url) =>
+      url === pinnedUrl ? new Response(key) : undefined,
+    );
     await prover.proveRequest(body);
     expect(fetch).not.toHaveBeenCalled();
-    expect(cache.delete).not.toHaveBeenCalled();
-    expect(cache.put).not.toHaveBeenCalled();
+    // The bridge's raw form then takes the pinned file's place.
+    expect(cache.put).toHaveBeenCalledExactlyOnceWith(
+      `${pinnedUrl}?zolana-key=raw`,
+      expect.any(Response),
+    );
+    expect(cache.delete).toHaveBeenCalledExactlyOnceWith(pinnedUrl);
     prover.terminate();
   });
 
@@ -600,10 +617,6 @@ describe("raw proving-key cache", () => {
   }
   const keyDownloads = (fetch: ReturnType<typeof vi.fn>) =>
     fetch.mock.calls.filter(([input]) => String(input).endsWith(".key")).length;
-
-  beforeEach(() => {
-    TestWorker.rawKeyFormat = "raw-test";
-  });
 
   it("keeps the bridge's raw key in place of the pinned file and loads it next time", async () => {
     const cache = memoryCache();
@@ -674,18 +687,11 @@ describe("raw proving-key cache", () => {
     prover.terminate();
   });
 
-  it("does not ask for a raw key without a cache or from a bridge that has none", async () => {
+  it("does not ask for a raw key without a cache", async () => {
     const { prover } = await fixture();
     await prover.proveRequest(body);
     expect(loadKeyRequest().exportRaw).toBe(false);
     prover.terminate();
-
-    memoryCache();
-    TestWorker.rawKeyFormat = undefined;
-    const older = await fixture();
-    await older.prover.proveRequest(body);
-    expect(loadKeyRequest().exportRaw).toBe(false);
-    older.prover.terminate();
   });
 });
 

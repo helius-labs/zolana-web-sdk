@@ -103,8 +103,8 @@ func unpackKernelParts(result js.Value) (kernelParts, error) {
 }
 func (k *browserKernel) close() { k.key.Call("free") }
 
-// kernelDecompressor is the kernel's point decompression, when the runtime
-// has it; nil otherwise.
+// kernelDecompressor is the kernel's point decompression, or nil when the
+// worker proves without the kernel (threads: 0) and Go decompresses the key.
 func kernelDecompressor() decompressor {
 	functions := js.Global().Get("__moproGnarkDecompress")
 	if functions.Type() != js.TypeObject {

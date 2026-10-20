@@ -23,12 +23,12 @@ import { operationError, WasmProverError } from "./errors.js";
 
 /** The API `wasm/prover-wasm` installs on `globalThis`. */
 interface ZolanaProverApi {
-  loadKey(fileName: string, key: Uint8Array, sha256?: string, exportRaw?: boolean): unknown;
+  loadKey(fileName: string, key: Uint8Array, sha256: string, exportRaw: boolean): unknown;
   prove(requestJson: string): unknown;
   loadedKeys(): unknown;
   verify(requestJson: string, proofJson: string): unknown;
-  /** Absent from bridges that cannot load or export a raw key. */
-  rawKeyFormat?: string;
+  /** The encoding of the raw keys `loadKey` exports and accepts. */
+  rawKeyFormat: string;
 }
 
 declare const __zolanaProver: ZolanaProverApi | undefined;
@@ -57,12 +57,11 @@ async function init(wasmUrl: string, threads: number): Promise<void> {
     const kernel = await import(/* @vite-ignore */ kernelUrl);
     await kernel.default();
     await kernel.initThreadPool(threads);
-    Object.assign(globalThis, { __moproGnarkKernel: kernel.Key });
-    // A runtime with point decompression lends it to the Go bridge for key loads.
-    if (typeof kernel.decompress_g1 === "function" && typeof kernel.decompress_g2 === "function")
-      Object.assign(globalThis, {
-        __moproGnarkDecompress: { g1: kernel.decompress_g1, g2: kernel.decompress_g2 },
-      });
+    // The Go bridge proves through the kernel and decompresses key points on its thread pool.
+    Object.assign(globalThis, {
+      __moproGnarkKernel: kernel.Key,
+      __moproGnarkDecompress: { g1: kernel.decompress_g1, g2: kernel.decompress_g2 },
+    });
     activeThreads = threads;
   }
 
@@ -123,17 +122,15 @@ async function handle(request: WorkerRequest): Promise<unknown> {
     case "init":
       await init(request.wasmUrl, request.threads);
       return { initialized: true, threads: activeThreads, rawKeyFormat: requireApi().rawKeyFormat };
-    case "loadKey": {
-      const bridge = requireApi();
-      const key = new Uint8Array(request.key);
-      // A bridge installed before raw keys takes (fileName, key) and hashes the key
-      // itself; the page never asks it for a raw key.
+    case "loadKey":
       return unwrap(
-        bridge.rawKeyFormat === undefined
-          ? bridge.loadKey(request.fileName, key)
-          : bridge.loadKey(request.fileName, key, request.sha256, request.exportRaw),
+        requireApi().loadKey(
+          request.fileName,
+          new Uint8Array(request.key),
+          request.sha256,
+          request.exportRaw,
+        ),
       );
-    }
     case "prove": {
       const result = unwrap(requireApi().prove(request.body)) as { proof?: unknown };
       // The page rebuilds an HTTP response from this, so hand back the exact
