@@ -7,6 +7,7 @@ export {
   keyForProveRequest,
   canonicalShape,
   formatBytes,
+  neededKeys,
   shapeByLabel,
   type Shape,
   type ShapeKey,
@@ -21,6 +22,7 @@ export {
   WasmProver as ZolanaWebProver,
   WasmProverError,
   type WasmProverOptions,
+  type ProvingKeyStatus,
   type WorkerRequest,
   type WorkerResponse,
 } from "./wasm-prover.js";

@@ -141,6 +141,30 @@ export function canonicalShape(inputs: number, outputs: number): ShapeKey {
   return found;
 }
 
+/**
+ * The keys spends of up to `maxInputs` notes with `outputs` outputs, and merges of
+ * up to `maxMergeInputs` notes, prove with, smallest first, as `prefetch` takes
+ * them. A transfer has two outputs, the payment and the change; a withdrawal pads
+ * its change to two. The mobile SDK's `ProvingKeys.needed`.
+ */
+export function neededKeys(
+  maxInputs: number,
+  outputs: readonly number[],
+  maxMergeInputs: number,
+): ShapeKey[] {
+  const needed = new Set<ShapeKey>();
+  for (let inputs = 1; inputs <= maxInputs; inputs++) {
+    for (const count of outputs) needed.add(canonicalShape(inputs, count));
+  }
+  // The narrowest merge that holds the notes, as the protocol's merge_circuit_width.
+  for (let count = 2; count <= maxMergeInputs; count++) {
+    const merge = MERGE_SHAPES.find((shape) => count <= shape.inputs);
+    if (merge === undefined) throw new Error(`no supported merge holds ${String(count)} notes`);
+    needed.add(merge);
+  }
+  return [...needed].sort((a, b) => a.keyBytes - b.keyBytes);
+}
+
 export function shapeByLabel(label: string): ShapeKey {
   const found = TRANSFER_SHAPES.find((shape) => shape.label === label);
   if (found === undefined) throw new Error(`unknown shape ${label}`);
