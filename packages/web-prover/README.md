@@ -60,7 +60,9 @@ npx --no-install zolana-prover-keys --output public/keys --keys transfer_confide
 
 Names must be confidential-transfer or merge keys present in the pinned proving-keys lockfile; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list. The command needs Node.js and network access; for a local mirror of the key set, set `ZOLANA_KEYS_BASE_URL` to a `file:///.../` directory, and the same checks apply.
 
-Keys are 9–362 MB each for confidential transfers (16 MB for 2x2, 94 MB for 12x8) and 56–380 MB for merge; deserialized circuits and proving work need additional memory. Only one deserialized key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points on the accelerator's thread pool (1.4 s for 2x2 and 4.9 s for 8x2 in Chrome at four threads on an Apple M5 Pro; slower with `threads: 0`, where Go decompresses them) and stores the decoded raw form in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in 0.15 s (2x2) and 0.5 s (8x2), plus about 0.2 s to read and check it. The raw form is about 1.6× the file's size, and storage is subject to the browser's quota. Keys live in the Cache API store `zolana-proving-keys-<key set>`, and stores left by other key sets are deleted on first use. Pass `persistStorage: true` to ask the browser not to evict them under storage pressure (`navigator.storage.persist()`; Firefox asks the user). Install only the shapes you use, and budget separately for download/storage size and runtime memory.
+Keys are 9–362 MB each for confidential transfers (16 MB for 2x2, 94 MB for 12x8) and 56–380 MB for merge; deserialized circuits and proving work need additional memory. Only one deserialized key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points on the accelerator's thread pool (1.4 s for 2x2 and 4.9 s for 8x2 in Chrome at four threads on an Apple M5 Pro; slower with `threads: 0`, where Go decompresses them) and stores the decoded raw form in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in 0.15 s (2x2) and 0.5 s (8x2), plus about 0.15 s to read it from the cache; it is checked by size, not hashed again, since a damaged entry fails its load and is rebuilt from the pinned key. The raw form is about 1.6× the file's size, and storage is subject to the browser's quota. Keys live in the Cache API store `zolana-proving-keys-<key set>`, and stores left by other key sets are deleted on first use. Pass `persistStorage: true` to ask the browser not to evict them under storage pressure (`navigator.storage.persist()`; Firefox asks the user). Install only the shapes you use, and budget separately for download/storage size and runtime memory.
+
+A key downloads in ranged parts of 8 MB, each kept in the cache as it arrives, so a download that a closed tab, a lost connection or an abort interrupted resumes where it stopped; a host that ignores ranges sends the whole key instead. The key is checked against the lockfile once it is whole, and a download that resumed from a damaged part starts over once.
 
 ## Prefetch keys
 
@@ -74,6 +76,14 @@ await prover.prefetch({
 ```
 
 `stage` is `download` while bytes arrive and `decode` once the worker starts loading the key. Pass `onKeyProgress` to the constructor to receive the same events for every load, including the ones a proof triggers. Without the Cache API only the last prefetched shape stays loaded.
+
+`neededKeys(maxInputs, outputs, maxMergeInputs)` names the shapes that spends of up to `maxInputs` notes with `outputs` outputs, and merges of up to `maxMergeInputs` notes, prove with, smallest first, for `prefetch`; a transfer has two outputs, the payment and the change. `provingKeys()` lists every key the prover can load with its size, the bytes the browser keeps of it and whether its decoded form is kept, without starting the worker. `clearKeys()` removes the kept keys, their decoded forms and interrupted downloads after any work in progress. These follow the mobile SDK's `ProvingKeys.needed`, `status` and `clear`:
+
+```ts
+const shapes = neededKeys(8, [2], 24); // spends of up to 8 notes, merges of up to 24
+await prover.prefetch({ shapes });
+const kept = (await prover.provingKeys()).reduce((sum, key) => sum + key.downloaded, 0);
+```
 
 ## Lifecycle and failures
 

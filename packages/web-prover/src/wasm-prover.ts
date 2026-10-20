@@ -18,7 +18,7 @@ export { WasmProverError } from "./errors.js";
 import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "./key-digests.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { proofRequestShape, proveRoute } from "./proof-requests.js";
-import { type ShapeKey } from "./shapes.js";
+import { MERGE_SHAPES, TRANSFER_SHAPES, type ShapeKey } from "./shapes.js";
 
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
 export type WorkerRequest =
@@ -54,6 +54,20 @@ export type WorkerResponse = Readonly<{
   /** Time spent inside the worker, so the page reports proving cost honestly. */
   ms: number;
 }>;
+
+/** A proving key the prover can load and how much of it the browser keeps. */
+export interface ProvingKeyStatus {
+  readonly keyFile: string;
+  /** The key's size in the lockfile. */
+  readonly size: number;
+  /**
+   * Bytes the browser keeps: `size` once the key downloaded, what an interrupted
+   * download left otherwise.
+   */
+  readonly downloaded: number;
+  /** Whether its decoded form is kept, so its next load skips decompression. */
+  readonly decoded: boolean;
+}
 
 export interface WasmProverOptions {
   /** Omit to choose automatically; zero selects the original Go prover. */
@@ -248,7 +262,50 @@ export class WasmProver {
     }
   }
 
-  /** Whether the cache holds this shape's raw form; the bytes are checked when loaded. */
+  /**
+   * Every key the prover can load, smallest first, with what the browser keeps of
+   * it. Reads the cache only: the worker need not be running, and a prefetch or
+   * proof may be downloading meanwhile.
+   */
+  async provingKeys(signal?: AbortSignal): Promise<readonly ProvingKeyStatus[]> {
+    const active = signal ?? new AbortController().signal;
+    const cache = await this.#openKeyCache(active);
+    const statuses: ProvingKeyStatus[] = [];
+    for (const shape of [...TRANSFER_SHAPES, ...MERGE_SHAPES].sort((a, b) => a.keyBytes - b.keyBytes)) {
+      const expected = KEY_DIGESTS[shape.keyFile];
+      if (expected === undefined) continue;
+      const status = { keyFile: shape.keyFile, size: expected.size, downloaded: 0, decoded: false };
+      statuses.push(status);
+      if (cache === undefined) continue;
+      const url = this.#keyUrl(shape);
+      const raw = await optionalCache(() => cache.match(rawKeyUrl(url)), active);
+      if (raw?.headers.get(rawSourceHeader) === expected.sha256) {
+        status.decoded = true;
+        status.downloaded = expected.size;
+      } else if ((await optionalCache(() => cache.match(url), active)) !== undefined) {
+        status.downloaded = expected.size;
+      } else {
+        status.downloaded = Math.min(
+          (await keptParts(cache, url, expected.size, active)) * keyPartBytes,
+          expected.size,
+        );
+      }
+    }
+    return statuses;
+  }
+
+  /**
+   * Removes the kept keys, their decoded forms and interrupted downloads. A
+   * prefetch or proof in progress finishes first; the key the worker has loaded
+   * stays loaded.
+   */
+  async clearKeys(signal?: AbortSignal): Promise<void> {
+    await this.#enqueue(async (active) => {
+      await optionalCache(() => globalThis.caches?.delete(keyCacheName), active);
+    }, signal);
+  }
+
+  /** Whether the cache holds this shape's raw form; its size is checked when loaded. */
   async #rawKeyKept(shape: ShapeKey, signal: AbortSignal): Promise<boolean> {
     await this.#ensureStarted(signal);
     const expected = KEY_DIGESTS[shape.keyFile];
@@ -393,7 +450,9 @@ export class WasmProver {
 
   /**
    * The raw re-encoding cached by an earlier load, if it was derived from this
-   * pinned key by a bridge writing the same format and is intact.
+   * pinned key by a bridge writing the same format and has its full size. It is
+   * not hashed again on every load: a damaged entry fails the bridge's load and
+   * is rebuilt from the pinned key, and a proof is verified before it returns.
    */
   async #cachedRawKey(
     cache: Cache | undefined,
@@ -404,15 +463,14 @@ export class WasmProver {
     if (cache === undefined) return undefined;
     const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
     if (hit === undefined) return undefined;
-    const digest = hit.headers.get(rawDigestHeader);
+    const size = Number(hit.headers.get(rawSizeHeader));
     if (
       hit.headers.get(rawSourceHeader) === expected.sha256 &&
       hit.headers.get(rawFormatHeader) === this.#rawKeyFormat &&
-      digest !== null
+      Number.isSafeInteger(size)
     ) {
       const bytes = await optionalCache(() => hit.arrayBuffer(), signal);
-      if (bytes !== undefined && (await abortable(sha256Hex(bytes), signal)) === digest)
-        return { bytes, raw: true, source: "cache" };
+      if (bytes?.byteLength === size) return { bytes, raw: true, source: "cache" };
     }
     // Derived from another key set or by another bridge, or damaged.
     await optionalCache(() => cache.delete(rawKeyUrl(url)), signal);
@@ -438,17 +496,92 @@ export class WasmProver {
       }
     }
 
-    const response = await abortable(this.#fetch(url, { signal }), signal);
-    if (!response.ok) {
-      throw new WasmProverError("wasm_key_download_failed");
+    let { bytes, resumed } =
+      cache === undefined
+        ? { bytes: await this.#download(url, expected.size, signal, downloaded), resumed: false }
+        : await this.#downloadInParts(cache, url, expected.size, signal, downloaded);
+    if (cache !== undefined && resumed && !(await abortable(matchesDigest(bytes, expected), signal))) {
+      // A part an earlier download left was stale or damaged: start over once.
+      await deleteParts(cache, url, expected.size, signal);
+      ({ bytes } = await this.#downloadInParts(cache, url, expected.size, signal, downloaded, false));
     }
-    const bytes = await abortable(readKey(response, expected.size, downloaded), signal);
     if (!(await abortable(matchesDigest(bytes, expected), signal))) {
+      if (cache !== undefined) await deleteParts(cache, url, expected.size, signal);
       throw new WasmProverError("wasm_key_digest_mismatch");
     }
-    if (cache !== undefined)
+    if (cache !== undefined) {
       await optionalCache(() => cache.put(url, new Response(bytes.slice(0))), signal);
+      await deleteParts(cache, url, expected.size, signal);
+    }
     return { bytes, raw: false, source: "network" };
+  }
+
+  async #download(
+    url: string,
+    size: number,
+    signal: AbortSignal,
+    downloaded?: (loaded: number) => void,
+  ): Promise<ArrayBuffer> {
+    const response = await abortable(this.#fetch(url, { signal }), signal);
+    if (!response.ok) throw new WasmProverError("wasm_key_download_failed");
+    return abortable(readKey(response, size, downloaded), signal);
+  }
+
+  /**
+   * Downloads a key in ranged parts, each kept in the cache as it arrives, so an
+   * interrupted download resumes where it stopped. A host that ignores ranges
+   * answers with the whole key, which is taken instead. `resumed` says whether
+   * parts an earlier download left were used; `resume: false` ignores them.
+   */
+  async #downloadInParts(
+    cache: Cache,
+    url: string,
+    size: number,
+    signal: AbortSignal,
+    downloaded?: (loaded: number) => void,
+    resume = true,
+  ): Promise<Readonly<{ bytes: ArrayBuffer; resumed: boolean }>> {
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (let index = 0; resume && offset < size; index++) {
+      const length = Math.min(keyPartBytes, size - offset);
+      const hit = await optionalCache(() => cache.match(partUrl(url, index)), signal);
+      const kept = hit === undefined ? undefined : await optionalCache(() => hit.arrayBuffer(), signal);
+      if (kept?.byteLength !== length) break;
+      bytes.set(new Uint8Array(kept), offset);
+      offset += length;
+    }
+    const resumed = offset > 0;
+    if (resumed) downloaded?.(offset);
+    while (offset < size) {
+      const end = Math.min(offset + keyPartBytes, size);
+      const response = await abortable(
+        this.#fetch(url, { signal, headers: { range: `bytes=${String(offset)}-${String(end - 1)}` } }),
+        signal,
+      );
+      if (response.status !== 200 && response.status !== 206) {
+        throw new WasmProverError("wasm_key_download_failed");
+      }
+      // Told apart by length, not status: a host without ranges answers 200 with the
+      // whole key, and an extension's own files answer 200 with just the range.
+      const start = offset;
+      const part = await abortable(
+        readKey(response, size, (loaded) => downloaded?.(Math.min(start + loaded, size))),
+        signal,
+      );
+      if (response.status === 200 && part.byteLength === size) {
+        await deleteParts(cache, url, size, signal);
+        return { bytes: part, resumed: false };
+      }
+      if (part.byteLength !== end - start) throw new WasmProverError("wasm_key_download_failed");
+      bytes.set(new Uint8Array(part), start);
+      await optionalCache(
+        () => cache.put(partUrl(url, start / keyPartBytes), new Response(part)),
+        signal,
+      );
+      offset = end;
+    }
+    return { bytes: bytes.buffer, resumed };
   }
 
   /** Keeps the raw form in place of the pinned file, which is no longer read. */
@@ -459,12 +592,11 @@ export class WasmProver {
     raw: Uint8Array<ArrayBuffer>,
     signal: AbortSignal,
   ): Promise<void> {
-    const digest = await abortable(sha256Hex(raw), signal);
     const headers = {
       "content-type": "application/octet-stream",
       [rawSourceHeader]: expected.sha256,
       [rawFormatHeader]: this.#rawKeyFormat,
-      [rawDigestHeader]: digest,
+      [rawSizeHeader]: String(raw.byteLength),
     };
     const stored = await optionalCache(async () => {
       await cache.put(rawKeyUrl(url), new Response(raw, { headers }));
@@ -632,16 +764,41 @@ async function readBody(input: RequestInfo | URL, init?: RequestInit): Promise<s
   return undefined;
 }
 
-/** Also matches 0.1.0's single `zolana-proving-keys` store. */
+/** The prefix of every key set's store; stores of other key sets are deleted. */
 const keyCachePrefix = "zolana-proving-keys";
 const keyCacheName = `${keyCachePrefix}-${KEY_SET}`;
 const rawSourceHeader = "x-zolana-pinned-sha256";
 const rawFormatHeader = "x-zolana-raw-format";
-const rawDigestHeader = "x-zolana-raw-sha256";
+const rawSizeHeader = "x-zolana-raw-size";
+/**
+ * Bytes per ranged request of a download, as the mobile SDK's: what a resumed
+ * download repeats at most.
+ */
+const keyPartBytes = 8 << 20;
 
 /** The Cache API ignores fragments, so the raw entry gets its own query. */
 function rawKeyUrl(url: string): string {
   return `${url}?zolana-key=raw`;
+}
+
+/** Where part `index` of an interrupted download is kept. */
+function partUrl(url: string, index: number): string {
+  return `${url}?zolana-key=part-${String(index)}`;
+}
+
+/** How many leading parts of a download of `size` bytes the cache keeps. */
+async function keptParts(cache: Cache, url: string, size: number, signal: AbortSignal): Promise<number> {
+  let index = 0;
+  while (index * keyPartBytes < size) {
+    if ((await optionalCache(() => cache.match(partUrl(url, index)), signal)) === undefined) break;
+    index += 1;
+  }
+  return index;
+}
+
+async function deleteParts(cache: Cache, url: string, size: number, signal: AbortSignal): Promise<void> {
+  for (let index = 0; index * keyPartBytes < size; index++)
+    await optionalCache(() => cache.delete(partUrl(url, index)), signal);
 }
 
 type KeyBytes = Readonly<{ bytes: ArrayBuffer; raw: boolean; source: "cache" | "network" }>;

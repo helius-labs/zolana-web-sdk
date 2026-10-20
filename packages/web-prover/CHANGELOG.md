@@ -13,6 +13,14 @@ Changed
 
 - Runtime 0.3.2, the 0.3.1 accelerator with Rayon's thread helpers for bundlers: its threads start from files the bundler emits rather than from `blob:` URLs, which an extension page refuses, so 0.2.0-alpha proves there only with `threads: 0`.
 - A thread pool that has not started after 30 s fails initialization with `wasm_init_failed` instead of waiting forever.
+- A key downloads in ranged parts of 8 MB kept in the cache as they arrive, so an interrupted download resumes where it stopped.
+- A kept decoded key is checked by its size instead of hashed on every load, about 0.02–0.05 s less per load after a page reload.
+
+Added
+
+- `neededKeys(maxInputs, outputs, maxMergeInputs)` names the keys spends and merges up to those limits prove with, for `prefetch`.
+- `prover.provingKeys()` lists every key with the bytes the browser keeps of it and whether its decoded form is kept; `ProvingKeyStatus` is exported.
+- `prover.clearKeys()` removes the kept keys, their decoded forms and interrupted downloads.
 
 ## 0.2.0-alpha — 2026-10-20
 

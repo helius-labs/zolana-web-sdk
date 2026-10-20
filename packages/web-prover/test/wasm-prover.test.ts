@@ -628,7 +628,7 @@ describe("raw proving-key cache", () => {
     const stored = cache.entries.get(rawUrl)!;
     expect(stored.headers.get("x-zolana-pinned-sha256")).toBe(await hex(key));
     expect(stored.headers.get("x-zolana-raw-format")).toBe("raw-test");
-    expect(stored.headers.get("x-zolana-raw-sha256")).toBe(await hex(rawKey));
+    expect(stored.headers.get("x-zolana-raw-size")).toBe(String(rawKey.length));
     first.prover.terminate();
 
     const steps: Measurement[] = [];
@@ -642,7 +642,7 @@ describe("raw proving-key cache", () => {
     second.prover.terminate();
   });
 
-  it.each(["pinned key", "format", "digest"] as const)(
+  it.each(["pinned key", "format", "size"] as const)(
     "rebuilds a raw entry with a different %s from the pinned key",
     async (mismatch) => {
       const cache = memoryCache();
@@ -652,7 +652,7 @@ describe("raw proving-key cache", () => {
           headers: {
             "x-zolana-pinned-sha256": mismatch === "pinned key" ? "0".repeat(64) : await hex(key),
             "x-zolana-raw-format": mismatch === "format" ? "raw-older" : "raw-test",
-            "x-zolana-raw-sha256": mismatch === "digest" ? "0".repeat(64) : await hex(rawKey),
+            "x-zolana-raw-size": String(mismatch === "size" ? rawKey.length + 1 : rawKey.length),
           },
         }),
       );
