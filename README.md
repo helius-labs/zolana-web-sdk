@@ -7,9 +7,9 @@ Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a 
 ## Packages
 
 - `@heliuslabs/zolana-web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
-- [`examples/wallet`](examples/wallet/README.md) is the integration example: a devnet private wallet on the published `@heliuslabs/zolana@0.4.0-alpha` that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
+- [`examples/wallet`](examples/wallet/README.md) is the integration example: a private wallet on devnet-d that registers, shields, sends privately and unshields, with every proof made in the page. Start here. It installs `@heliuslabs/zolana` from npm, so it stays on 0.4.0-alpha, which neither devnet-d nor the pinned keys serve, until 0.5.0-alpha is published (see [UPSTREAM.md](UPSTREAM.md)).
 - `examples/browser` is the prover benchmark: it proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, on one proof or five, and the proof timing harness drives it.
-- `@heliuslabs/zolana-web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
+- `@heliuslabs/zolana-web-prover` matches zolana v0.5.0-alpha's `/prove` requests and proving keys (key set `8e234b5a589cfb79`, merges of up to 52 notes; see [UPSTREAM.md](UPSTREAM.md)) without depending on `@heliuslabs/zolana`. devnet-d runs that release: shielded pool `spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt`, user registry `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`.
 - The prover runtime is zopro-zolana, Zolana's requests on zopro (a Rust Groth16 prover for gnark circuits), built for the browser from the zopro revision `runtime.lock.json` pins. Its keys are zopro keys built from the gnark proving keys the SDK pins, pinned in `zopro-keys.lock`.
 
 ## Setup
@@ -42,11 +42,11 @@ The opt-in devnet gate drives the wallet example in Chrome: a fresh key register
 ```sh
 npm run build:prover
 ZOLANA_E2E_FUNDER=~/.config/solana/id.json \
-VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=$API_KEY" \
+VITE_SOLANA_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
 npm run test:devnet
 ```
 
-Use a keyed RPC; the public devnet endpoint rate-limits confirmation polling.
+Use a keyed RPC; the public devnet endpoint rate-limits confirmation polling. The gate needs the example on `@heliuslabs/zolana` 0.5.0-alpha, which devnet-d and the pinned keys serve.
 
 ### Proof timing
 
@@ -61,7 +61,7 @@ node scripts/proof-timing-report.mjs --logs /tmp/timing
 
 The lines land in `/tmp/timing/<label>/` (`chrome-linux`, `chrome-macos` or `chrome-windows` unless `ZOLANA_TIMING_LABEL` names the machine), beside a `runner.json` with the browser, system, processor, memory and thread count; `ZOLANA_TIMING_BUILT=1` times the built page (`npm run build:example`) instead of the dev server.
 
-The requests are `fixtures/transfer-*.json` and `merge-*.json`, valid witnesses on trees of their own (the mobile SDK's `tools/prove-fixtures` wrote them). Keys load from where the page loads them, so set `VITE_ZOLANA_KEYS_URL` to the key CDN for shapes not staged under `public/keys`. `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per shape and run; `ZOLANA_TIMING_THREADS=4` sizes the runtime's thread pool as on a four-core laptop, and `ZOLANA_TIMING_CHROME_ARGS=--disable-features=WebGPU` times the CPU alone.
+The requests are `fixtures/transfer-*.json` and `merge-*.json`, valid witnesses on trees of their own (zk-tools' `zopro/tools/zolana/fixtures` at the pinned revision). Keys load from where the page loads them, so set `VITE_ZOLANA_KEYS_URL` to the key CDN for shapes not staged under `public/keys`. `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per shape and run; `ZOLANA_TIMING_THREADS=4` sizes the runtime's thread pool as on a four-core laptop, and `ZOLANA_TIMING_CHROME_ARGS=--disable-features=WebGPU` times the CPU alone.
 
 ### GPU profile
 
@@ -69,7 +69,7 @@ The requests are `fixtures/transfer-*.json` and `merge-*.json`, valid witnesses 
 
 ## Runtime and keys
 
-`runtime.lock.json` pins the zopro repository and revision the runtime is built from, with the Rust toolchain and the wasm-bindgen version. `scripts/build-runtime.sh` (`npm run build:runtime`, and the package build) builds zopro-zolana for the browser into the package's `src/runtime` with a manifest of every file's size and SHA-256, and keeps a runtime already built from the pins; the package ships it beside the compiled worker. The build uses Rayon's thread helpers for bundlers: zopro builds the helpers for pages without one, which start their threads from `blob:` URLs that extension pages refuse. A new runtime is a new pinned revision.
+`runtime.lock.json` pins the zopro repository and revision the runtime is built from, with the Rust toolchain and the wasm-bindgen version. `scripts/build-runtime.sh` (`npm run build:runtime`, and the package build) builds zopro-zolana for the browser into the package's `src/runtime` with a manifest of every file's size and SHA-256, and keeps a runtime already built from the pins; the package ships it beside the compiled worker. The build uses Rayon's thread helpers for bundlers, zopro's default; its `no-bundler` feature builds the helpers for pages without one, which start their threads from `blob:` URLs that extension pages refuse. A new runtime is a new pinned revision.
 
 The keys are zopro keys: one file per circuit with the gnark proving key's points, the circuit's solver program, its input names and its verifying key, built offline from the gnark keys of the pinned key set with zopro's `tools/gnark/build-keys.sh`. `zopro-keys.lock` pins each file's size and SHA-256 beside the SHA-256 of the gnark key it was built from, which proofs report, and the CDN folder they are served from; the package's key digests and shape table are generated from it at build and test time, and `scripts/check-upstream.sh` checks it against the pinned zolana release (see [UPSTREAM.md](UPSTREAM.md)).
 

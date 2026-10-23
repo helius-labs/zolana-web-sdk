@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Fails when the zopro key pins or the wallet example's SDK pin drift from
 # the zolana release pinned in upstream.lock.json: every zopro key must be
-# built from the gnark key upstream pins for its circuit. Set ZOLANA_SRC to
-# an existing checkout to skip the clone.
+# built from the gnark key upstream pins for its circuit. The example installs
+# the SDK from npm, so its pin may lag the release's until that version is
+# published there. Set ZOLANA_SRC to an existing checkout to skip the clone.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,11 +55,21 @@ sys.exit(0 if ok else 1)
 PY
 rm -f "$upstream_keys"
 
-# The wallet example's SDK is the pinned release, and it expects the gnark keys ours are built from.
+# The wallet example's SDK is the pinned release, and it expects the gnark keys
+# ours are built from. Until that release is on npm the example keeps the
+# version npm has, and its installed SDK is not checked against our keys.
 pinned="$(json "$root/examples/wallet/package.json" dependencies | python3 -c 'import ast, sys; print(ast.literal_eval(sys.stdin.read())["@heliuslabs/zolana"])')"
-[[ "$pinned" == "$sdk" ]] || fail "examples/wallet pins @heliuslabs/zolana $pinned, upstream.lock.json says $sdk"
+if [[ "$pinned" != "$sdk" ]]; then
+  if ! published="$(npm view @heliuslabs/zolana versions --json)"; then
+    fail "cannot list @heliuslabs/zolana's versions on npm"
+  elif python3 -c 'import json, sys; sys.exit(0 if sys.argv[1] in json.loads(sys.argv[2]) else 1)' "$sdk" "$published"; then
+    fail "examples/wallet pins @heliuslabs/zolana $pinned, upstream.lock.json says $sdk, which is on npm"
+  else
+    echo "note: examples/wallet stays on @heliuslabs/zolana $pinned until $sdk is on npm; its installed SDK is not checked against the keys" >&2
+  fi
+fi
 installed="$root/node_modules/@heliuslabs/zolana"
-if [[ -d "$installed" ]]; then
+if [[ "$pinned" == "$sdk" && -d "$installed" ]]; then
   got="$(json "$installed/package.json" version)"
   [[ "$got" == "$sdk" ]] || fail "installed @heliuslabs/zolana is $got, upstream.lock.json says $sdk"
   node --input-type=module - "$installed/dist/interface/proving-keys.js" "$root/zopro-keys.lock" <<'JS' || failed=1
@@ -74,7 +85,7 @@ for (const [name, sha256] of Object.entries(sdk)) {
 }
 process.exit(ok ? 0 : 1);
 JS
-else
+elif [[ "$pinned" == "$sdk" ]]; then
   echo "note: node_modules absent, skipping the installed SDK check (run npm ci)" >&2
 fi
 
@@ -82,4 +93,8 @@ if [[ "$failed" -ne 0 ]]; then
   echo "zopro keys or pins are out of sync with zolana $tag ($revision)" >&2
   exit 1
 fi
-echo "zopro keys and pins match zolana $tag ($revision) and @heliuslabs/zolana $sdk"
+if [[ "$pinned" != "$sdk" ]]; then
+  echo "zopro keys and pins match zolana $tag ($revision); examples/wallet waits for @heliuslabs/zolana $sdk on npm"
+else
+  echo "zopro keys and pins match zolana $tag ($revision) and @heliuslabs/zolana $sdk"
+fi

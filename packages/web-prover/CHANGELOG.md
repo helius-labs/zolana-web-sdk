@@ -6,6 +6,8 @@ Proofs are made by zopro, a Rust Groth16 prover for gnark's circuits: one WebAss
 
 Breaking
 
+- Proves the requests of `@heliuslabs/zolana` 0.5.0-alpha (zolana v0.5.0-alpha, which devnet-d runs) with the zopro keys of its key set, `8e234b5a589cfb79`: a merge takes 8, 24 or 52 notes and carries its mint chunks and output ciphertext salt. Requests and keys of 0.4.0-alpha fail.
+- `@heliuslabs/zolana` 0.5.0-alpha encrypts its calls to a prover for the prover's attested enclave unless the prover is on loopback, so the `proverUrl` that `createFetch()` answers for is a loopback URL such as `http://localhost`.
 - Proving needs cross-origin isolation and at least one thread (`threads`, by default the browser's processors up to 18).
 - Keys are zopro keys, `<name>.zopro`, each built from the pinned gnark key of the same name and checked against the size and SHA-256 bundled in the package from `zopro-keys.lock`; `zolana-prover-keys` installs the `.zopro` files, and a self-hosted `keyBaseUrl` serves them.
 

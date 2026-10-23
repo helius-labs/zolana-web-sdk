@@ -50,17 +50,13 @@ build() {
   local zopro built target bindgen
   work="$(mktemp -d "${TMPDIR:-/tmp}/zolana-runtime.XXXXXX")"
   trap 'rm -rf "$work"' EXIT
-  zopro="$work/zopro"
   if [[ -n "${ZOPRO_DIR:-}" ]]; then
-    local checkout
-    checkout="$(cd "$ZOPRO_DIR" && pwd)"
-    built="$(git -C "$checkout" rev-parse HEAD)"
-    [[ -z "$(git -C "$checkout" status --porcelain)" ]] || built="$built-dirty"
+    zopro="$(cd "$ZOPRO_DIR" && pwd)"
+    built="$(git -C "$zopro" rev-parse HEAD)"
+    [[ -z "$(git -C "$zopro" status --porcelain)" ]] || built="$built-dirty"
     [[ "$built" == "$revision" ]] || echo "note: building zopro $built, runtime.lock.json pins $revision" >&2
-    # A copy, since the build edits a manifest below.
-    mkdir -p "$zopro"
-    git -C "$checkout" ls-files -z --cached --others --exclude-standard | tar -C "$checkout" --null -T - -cf - | tar -C "$zopro" -xf -
   else
+    zopro="$work/zopro"
     git init -q "$zopro"
     git -C "$zopro" remote add origin "$(pin zopro.repository)"
     git -C "$zopro" fetch -q --depth=1 origin "$revision"
@@ -71,12 +67,6 @@ build() {
   fi
   target="${CARGO_TARGET_DIR:-$root/target/zopro-wasm}"
 
-  # zopro builds Rayon's helpers for pages without a bundler, which start their
-  # threads from blob: URLs that extension pages refuse; the app's bundler emits
-  # these helpers as files instead.
-  replace "$zopro/crates/zopro-core/Cargo.toml" \
-    'wasm-bindgen-rayon = { version = "1.3", features = ["no-bundler"] }' \
-    'wasm-bindgen-rayon = "1.3"'
   (cd "$zopro/crates/zopro-zolana" && CARGO_TARGET_DIR="$target" CARGO_PROFILE_RELEASE_LTO=false \
     rustup run "$rust_toolchain" cargo rustc --release --locked --target wasm32-unknown-unknown \
     --crate-type cdylib --features wgpu)

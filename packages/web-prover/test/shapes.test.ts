@@ -15,7 +15,7 @@ it("names the keys of every spend and merge up to the limits, smallest first", (
       "transfer_confidential_3_4.key",
       "merge_8_1.key",
       "merge_24_1.key",
-      "merge_54_1.key",
+      "merge_52_1.key",
     ].sort(),
   );
   const sizes = needed.map((shape) => shape.keyBytes);
@@ -31,7 +31,7 @@ it("takes the smallest shape that holds a spend, and no merge below two notes", 
 });
 
 it("refuses limits no pinned key holds", () => {
-  expect(() => neededKeys(1, [2], 55)).toThrow("no supported merge holds 55 notes");
+  expect(() => neededKeys(1, [2], 53)).toThrow("no supported merge holds 53 notes");
   expect(() => neededKeys(50, [2], 0)).toThrow("no supported shape holds 50x2");
 });
 
