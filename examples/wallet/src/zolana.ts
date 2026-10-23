@@ -60,7 +60,6 @@ export interface Snapshot {
  */
 export async function openSession(seed: Uint8Array, onMeasurement: (m: Measurement) => void): Promise<Session> {
   const prover = new ZolanaWebProver({
-    runtimeUrl: `${import.meta.env.BASE_URL}prover/`,
     proverUrl: endpoints.proverUrl,
     onMeasurement,
   });

@@ -18,7 +18,11 @@ let runtime: Runtime | undefined;
 let activeThreads = 0;
 let loaded: { fileName: string; prover: ZolanaProver } | undefined;
 
-async function init(runtimeUrl: string, threads: number): Promise<void> {
+// Rayon's helpers wait for every thread to report ready, and a thread whose script
+// the page refuses never does; a pool that has not started by then has failed.
+const threadPoolTimeoutMs = 30_000;
+
+async function init(threads: number): Promise<void> {
   if (runtime !== undefined) return;
   if (!Number.isInteger(threads) || threads < 1 || threads > 64) {
     throw new Error("Threads must be an integer between 1 and 64");
@@ -27,12 +31,24 @@ async function init(runtimeUrl: string, threads: number): Promise<void> {
     throw new Error(
       "Proving requires cross-origin isolation. Use the Vite server with COOP/COEP headers.",
     );
-  const module = await importRuntime(runtimeUrl);
+  const module = await importRuntime();
   await module.default();
-  await module.initThreadPool(threads);
+  await withTimeout(module.initThreadPool(threads), threadPoolTimeoutMs);
   if ("gpu" in navigator) await module.init_gpu();
   runtime = module;
   activeThreads = threads;
+}
+
+async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("the runtime's thread pool did not start")), ms);
+  });
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function requireRuntime(): Runtime {
@@ -87,7 +103,7 @@ async function prove(body: string): Promise<ProofValue> {
 async function handle(request: WorkerRequest): Promise<unknown> {
   switch (request.kind) {
     case "init":
-      await init(request.runtimeUrl, request.threads);
+      await init(request.threads);
       return {
         initialized: true,
         threads: activeThreads,

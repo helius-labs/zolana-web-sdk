@@ -41,7 +41,7 @@ beforeEach(async () => {
   vi.stubGlobal("self", scope);
   vi.stubGlobal("crossOriginIsolated", true);
   await import("../src/prover.worker.js");
-  initialized = await send({ id: 1, kind: "init", threads: 2, runtimeUrl: "/prover/" });
+  initialized = await send({ id: 1, kind: "init", threads: 2 });
   expect(initialized.ok).toBe(true);
 });
 

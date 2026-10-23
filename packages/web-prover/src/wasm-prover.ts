@@ -13,16 +13,17 @@
 
 import { abortable } from "./abortable.js";
 import type { KeyProgress, Measurement } from "./measurement.js";
-import { operationError, WasmProverError, workerError } from "./errors.js";
+import { WasmProverError, workerError } from "./errors.js";
 export { WasmProverError } from "./errors.js";
-import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "./key-digests.js";
+import { KeyStore, type KeyBytes, type KeyDigest, type ProvingKeyStatus } from "./key-store.js";
 import { automaticProvingThreads } from "./proving-threads.js";
-import { proofRequestShape, proveRoute } from "./proof-requests.js";
+import { createProverFetch } from "./prover-fetch.js";
+import { proofRequestShape } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
 
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
 export type WorkerRequest =
-  | Readonly<{ id: number; kind: "init"; runtimeUrl: string; threads: number }>
+  | Readonly<{ id: number; kind: "init"; threads: number }>
   | Readonly<{
       id: number;
       kind: "loadKey";
@@ -56,17 +57,12 @@ export type WorkerResponse = Readonly<{
 }>;
 
 export interface WasmProverOptions {
-  /**
-   * URL of the directory holding the prover runtime (`zopro_zolana.js`, its
-   * wasm and `snippets/`), as installed by `zolana-prover-assets`.
-   */
-  readonly runtimeUrl: string;
   /** Threads of the proving pool, at least one; omit to choose automatically. */
   readonly threads?: number;
   /**
    * Where proving keys are fetched from. Omit it to use the pinned key set on
    * the Zolana CDN, which serves them with CORS; set it to self-host or mirror
-   * them, as `zolana-prover-assets --keys` installs.
+   * them, as `zolana-prover-keys` installs.
    */
   readonly keyBaseUrl?: string;
   /** The prover URL handed to the SDK; requests to it are intercepted. */
@@ -86,23 +82,16 @@ export interface WasmProverOptions {
 }
 
 /**
- * Owns the worker, the key cache, and the `fetch` shim.
- *
- * Proving keys are cached in the Cache API rather than memory: they are 7-150 MB
- * each and immutable (the lockfile pins their sha256 and the CloudFront prefix
- * is version-hashed), so re-downloading one per page load is pure waste. After
- * a shape's first load the cache keeps the runtime's raw form instead of the
- * pinned file: the pinned file's compressed points take seconds to decompress
- * in wasm on every load, and the raw form skips that and the solver's build.
+ * Owns the worker and the queue of its work; the keys live in a `KeyStore`
+ * and the SDK's `fetch` comes from `createProverFetch`.
  */
 export class WasmProver {
   #worker: Worker | undefined;
   #factory: (() => Worker) | undefined;
   #initialization: Promise<void> | undefined;
   #lifetime = new AbortController();
-  /** The encoding of the raw keys the started worker's bridge exports and accepts. */
+  /** The encoding of the raw keys the started worker's runtime exports and accepts. */
   #rawKeyFormat = "";
-  #cachePrepared = false;
   #nextId = 1;
   #queue: Promise<unknown> = Promise.resolve();
   #threads = 0;
@@ -134,14 +123,21 @@ export class WasmProver {
     number,
     Readonly<{ resolve: (value: WorkerResponse) => void; reject: (error: unknown) => void }>
   >();
+  /** The key the worker holds; one deserialized key is resident at a time. */
   readonly #loaded = new Set<string>();
   readonly #options: WasmProverOptions;
+  readonly #store: KeyStore;
   readonly #fetch: typeof globalThis.fetch;
 
   constructor(options: WasmProverOptions) {
     this.#options = options;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#factory = options.workerFactory ?? createProverWorker;
+    this.#store = new KeyStore({
+      fetch: this.#fetch,
+      ...(options.keyBaseUrl === undefined ? {} : { keyBaseUrl: options.keyBaseUrl }),
+      ...(options.persistStorage === undefined ? {} : { persistStorage: options.persistStorage }),
+    });
   }
 
   /**
@@ -185,7 +181,6 @@ export class WasmProver {
     });
     const initialization = this.#call({
       kind: "init",
-      runtimeUrl: this.#options.runtimeUrl,
       threads: this.#options.threads ?? automaticProvingThreads(),
     })
       .then((ready) => {
@@ -247,24 +242,29 @@ export class WasmProver {
   ): Promise<void> {
     for (const shape of options.shapes) {
       await this.#enqueue(async (active) => {
-        if (!(await this.#rawKeyKept(shape, active)))
+        await this.#ensureStarted(active);
+        if (!(await this.#store.rawKept(shape, this.#rawKeyFormat, active)))
           await this.#loadKey(shape, active, options.onProgress);
       }, options.signal);
     }
   }
 
-  /** Whether the cache holds this shape's raw form; the bytes are checked when loaded. */
-  async #rawKeyKept(shape: ShapeKey, signal: AbortSignal): Promise<boolean> {
-    await this.#ensureStarted(signal);
-    const expected = KEY_DIGESTS[shape.keyFile];
-    const cache = await this.#openKeyCache(signal);
-    if (expected === undefined || cache === undefined) return false;
-    const url = this.#keyUrl(shape);
-    const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
-    return (
-      hit?.headers.get(rawSourceHeader) === expected.sha256 &&
-      hit.headers.get(rawFormatHeader) === this.#rawKeyFormat
-    );
+  /**
+   * Every key the prover can load, smallest first, with what the browser keeps of
+   * it. Reads the cache only: the worker need not be running, and a prefetch or
+   * proof may be downloading meanwhile.
+   */
+  provingKeys(signal?: AbortSignal): Promise<readonly ProvingKeyStatus[]> {
+    return this.#store.status(signal ?? new AbortController().signal);
+  }
+
+  /**
+   * Removes the kept keys, their decoded forms and interrupted downloads. A
+   * prefetch or proof in progress finishes first; the key the worker has loaded
+   * stays loaded.
+   */
+  async clearKeys(signal?: AbortSignal): Promise<void> {
+    await this.#enqueue((active) => this.#store.clear(active), signal);
   }
 
   async #loadKey(
@@ -285,10 +285,7 @@ export class WasmProver {
       return;
     }
 
-    const url = this.#keyUrl(shape);
-    const expected = KEY_DIGESTS[shape.keyFile];
-    if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
-    const cache = await this.#openKeyCache(signal);
+    const expected = this.#store.digest(shape);
     const progress = (stage: KeyProgress["stage"], loaded: number) => {
       const update = { keyFile: shape.keyFile, stage, loaded, total: expected.size };
       this.#options.onKeyProgress?.(update);
@@ -299,9 +296,7 @@ export class WasmProver {
         ? undefined
         : (loaded: number) => progress("download", loaded);
     const started = performance.now();
-    let key =
-      (await this.#cachedRawKey(cache, url, expected, signal)) ??
-      (await this.#pinnedKey(cache, url, expected, signal, downloaded));
+    let key = await this.#store.load(shape, this.#rawKeyFormat, signal, downloaded);
     signal.throwIfAborted();
     this.#options.onMeasurement?.({
       step: "key-fetch",
@@ -315,15 +310,14 @@ export class WasmProver {
     progress("decode", expected.size);
     let response: WorkerResponse;
     try {
-      response = await this.#installKey(shape, key, expected, cache);
+      response = await this.#installKey(shape, key, expected);
     } catch (error) {
       if (!key.raw) throw error;
       // A raw entry the runtime no longer accepts is rebuilt from the pinned key.
       signal.throwIfAborted();
-      await optionalCache(() => cache?.delete(rawKeyUrl(url)), signal);
-      key = await this.#pinnedKey(cache, url, expected, signal, downloaded);
+      key = await this.#store.reload(shape, signal, downloaded);
       signal.throwIfAborted();
-      response = await this.#installKey(shape, key, expected, cache);
+      response = await this.#installKey(shape, key, expected);
     }
     signal.throwIfAborted();
     const info = response.value as
@@ -340,11 +334,10 @@ export class WasmProver {
     });
     signal.throwIfAborted();
     const raw = info?.raw;
-    if (cache !== undefined && raw instanceof Uint8Array && raw.buffer instanceof ArrayBuffer)
-      await this.#storeRawKey(
-        cache,
-        url,
-        expected,
+    if (key.cacheable && raw instanceof Uint8Array && raw.buffer instanceof ArrayBuffer)
+      await this.#store.keepRaw(
+        shape,
+        this.#rawKeyFormat,
         new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength),
         signal,
       );
@@ -352,131 +345,18 @@ export class WasmProver {
     this.#loaded.add(shape.keyFile);
   }
 
-  /** The URL of the shape's zopro key file. */
-  #keyUrl(shape: ShapeKey): string {
-    const file = KEY_DIGESTS[shape.keyFile]?.file;
-    if (file === undefined) throw new WasmProverError("wasm_key_manifest_error");
-    return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${file}`;
-  }
-
-  /**
-   * Opens this key set's cache. The first call also deletes the stores of other
-   * key sets, so a rotation frees its keys at once, and asks for persistence
-   * when the caller opted in.
-   */
-  async #openKeyCache(signal: AbortSignal): Promise<Cache | undefined> {
-    if (!this.#cachePrepared) {
-      this.#cachePrepared = true;
-      const names = await optionalCache(() => globalThis.caches?.keys(), signal);
-      for (const name of names ?? []) {
-        if (name.startsWith(keyCachePrefix) && name !== keyCacheName)
-          await optionalCache(() => globalThis.caches?.delete(name), signal);
-      }
-      if (this.#options.persistStorage === true)
-        await optionalCache(() => globalThis.navigator?.storage?.persist(), signal);
-    }
-    return optionalCache(() => globalThis.caches?.open(keyCacheName), signal);
-  }
-
-  #installKey(
-    shape: ShapeKey,
-    key: KeyBytes,
-    expected: KeyDigest,
-    cache: Cache | undefined,
-  ): Promise<WorkerResponse> {
-    const exportRaw = !key.raw && cache !== undefined;
+  #installKey(shape: ShapeKey, key: KeyBytes, expected: KeyDigest): Promise<WorkerResponse> {
     return this.#call(
       {
         kind: "loadKey",
         fileName: shape.keyFile,
         key: key.bytes,
         keySha256: expected.keySha256,
-        exportRaw,
+        // The runtime's raw form, to keep in place of the pinned file.
+        exportRaw: !key.raw && key.cacheable,
       },
       [key.bytes],
     );
-  }
-
-  /**
-   * The raw form cached by an earlier load, if it was derived from this
-   * pinned key by a runtime writing the same format and is intact.
-   */
-  async #cachedRawKey(
-    cache: Cache | undefined,
-    url: string,
-    expected: KeyDigest,
-    signal: AbortSignal,
-  ): Promise<KeyBytes | undefined> {
-    if (cache === undefined) return undefined;
-    const hit = await optionalCache(() => cache.match(rawKeyUrl(url)), signal);
-    if (hit === undefined) return undefined;
-    const digest = hit.headers.get(rawDigestHeader);
-    if (
-      hit.headers.get(rawSourceHeader) === expected.sha256 &&
-      hit.headers.get(rawFormatHeader) === this.#rawKeyFormat &&
-      digest !== null
-    ) {
-      const bytes = await optionalCache(() => hit.arrayBuffer(), signal);
-      if (bytes !== undefined && (await abortable(sha256Hex(bytes), signal)) === digest)
-        return { bytes, raw: true, source: "cache" };
-    }
-    // Derived from another key set or by another runtime, or damaged.
-    await optionalCache(() => cache.delete(rawKeyUrl(url)), signal);
-    return undefined;
-  }
-
-  async #pinnedKey(
-    cache: Cache | undefined,
-    url: string,
-    expected: KeyDigest,
-    signal: AbortSignal,
-    downloaded?: (loaded: number) => void,
-  ): Promise<KeyBytes> {
-    if (cache !== undefined) {
-      const hit = await optionalCache(() => cache.match(url), signal);
-      if (hit !== undefined) {
-        const cached = await optionalCache(() => hit.arrayBuffer(), signal);
-        if (cached !== undefined && (await abortable(matchesDigest(cached, expected), signal)))
-          return { bytes: cached, raw: false, source: "cache" };
-        // Written before a rotation: same shape, different circuit. Evict rather
-        // than prove against it.
-        await optionalCache(() => cache.delete(url), signal);
-      }
-    }
-
-    const response = await abortable(this.#fetch(url, { signal }), signal);
-    if (!response.ok) {
-      throw new WasmProverError("wasm_key_download_failed");
-    }
-    const bytes = await abortable(readKey(response, expected.size, downloaded), signal);
-    if (!(await abortable(matchesDigest(bytes, expected), signal))) {
-      throw new WasmProverError("wasm_key_digest_mismatch");
-    }
-    if (cache !== undefined)
-      await optionalCache(() => cache.put(url, new Response(bytes.slice(0))), signal);
-    return { bytes, raw: false, source: "network" };
-  }
-
-  /** Keeps the raw form in place of the pinned file, which is no longer read. */
-  async #storeRawKey(
-    cache: Cache,
-    url: string,
-    expected: KeyDigest,
-    raw: Uint8Array<ArrayBuffer>,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const digest = await abortable(sha256Hex(raw), signal);
-    const headers = {
-      "content-type": "application/octet-stream",
-      [rawSourceHeader]: expected.sha256,
-      [rawFormatHeader]: this.#rawKeyFormat,
-      [rawDigestHeader]: digest,
-    };
-    const stored = await optionalCache(async () => {
-      await cache.put(rawKeyUrl(url), new Response(raw, { headers }));
-      return true;
-    }, signal);
-    if (stored === true) await optionalCache(() => cache.delete(url), signal);
   }
 
   /**
@@ -485,37 +365,14 @@ export class WasmProver {
    * everything else is delegated, so one shim covers the client.
    */
   createFetch(): typeof globalThis.fetch {
-    return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = requestUrl(input);
-      const route = url === undefined ? undefined : proveRoute(url, this.#options.proverUrl);
-      if (route === undefined) return await this.#fetch(input as RequestInfo, init);
-
-      const signal =
-        init?.signal !== undefined
-          ? (init.signal ?? undefined)
-          : input instanceof Request
-            ? input.signal
-            : undefined;
-      signal?.throwIfAborted();
-      try {
-        if (route.kind === "unsupported") throw new WasmProverError("wasm_invalid_request");
-        const body = await abortable(readBody(input, init), signal);
-        if (body === undefined) throw new WasmProverError("wasm_invalid_request");
-        // The path names the proving key; prove nothing the body does not match.
-        if (route.keyFile !== undefined && proofRequestShape(body)?.keyFile !== route.keyFile) {
-          throw new WasmProverError("wasm_invalid_request");
-        }
-        const result = await this.proveRequest(body, signal);
-        signal?.throwIfAborted();
-        return new Response(result.proof, {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      } catch (error) {
-        rethrowAbort(error, signal);
-        return proverErrorResponse(error, this.#options.onMeasurement);
-      }
-    };
+    return createProverFetch({
+      proverUrl: this.#options.proverUrl,
+      fetch: this.#fetch,
+      ...(this.#options.onMeasurement === undefined
+        ? {}
+        : { onMeasurement: this.#options.onMeasurement }),
+      prove: (body, signal) => this.proveRequest(body, signal),
+    });
   }
 
   /**
@@ -614,115 +471,9 @@ export class WasmProver {
 }
 
 function createProverWorker(): Worker {
-  return new Worker(new URL("./prover.worker.ts", import.meta.url), {
+  // The compiled worker, which the app's bundler emits with the runtime beside it.
+  return new Worker(new URL("./prover.worker.js", import.meta.url), {
     type: "module",
     name: "zolana-web-prover",
   });
-}
-
-function requestUrl(input: RequestInfo | URL): URL | undefined {
-  try {
-    if (typeof input === "string") return new URL(input);
-    if (input instanceof URL) return input;
-    return new URL(input.url);
-  } catch {
-    return undefined;
-  }
-}
-
-async function readBody(input: RequestInfo | URL, init?: RequestInit): Promise<string | undefined> {
-  if (typeof init?.body === "string") return init.body;
-  if (input instanceof Request) return await input.clone().text();
-  return undefined;
-}
-
-/** Also matches 0.1.0's single `zolana-proving-keys` store. */
-const keyCachePrefix = "zolana-proving-keys";
-const keyCacheName = `${keyCachePrefix}-${KEY_SET}`;
-const rawSourceHeader = "x-zolana-pinned-sha256";
-const rawFormatHeader = "x-zolana-raw-format";
-const rawDigestHeader = "x-zolana-raw-sha256";
-
-/** The Cache API ignores fragments, so the raw entry gets its own query. */
-function rawKeyUrl(url: string): string {
-  return `${url}?zolana-key=raw`;
-}
-
-type KeyBytes = Readonly<{ bytes: ArrayBuffer; raw: boolean; source: "cache" | "network" }>;
-
-/** One entry of `KEY_DIGESTS`, copied from `zopro-keys.lock`. */
-export interface KeyDigest {
-  readonly size: number;
-  readonly sha256: string;
-  /** The gnark proving key the file was built from. */
-  readonly keySha256: string;
-}
-
-/** Reads a key body, reporting bytes as they arrive and stopping past the pinned size. */
-async function readKey(
-  response: Response,
-  size: number,
-  downloaded?: (loaded: number) => void,
-): Promise<ArrayBuffer> {
-  const reader = downloaded === undefined ? undefined : response.body?.getReader();
-  if (reader === undefined) return response.arrayBuffer();
-  const bytes = new Uint8Array(size);
-  let loaded = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (loaded + value.byteLength > size) {
-      await reader.cancel();
-      throw new WasmProverError("wasm_key_digest_mismatch");
-    }
-    bytes.set(value, loaded);
-    loaded += value.byteLength;
-    downloaded?.(loaded);
-  }
-  return loaded === size ? bytes.buffer : bytes.buffer.slice(0, loaded);
-}
-
-async function sha256Hex(bytes: BufferSource): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function matchesDigest(bytes: ArrayBuffer, expected: KeyDigest): Promise<boolean> {
-  // Size first: it is free and rejects the common case (a dev server with no keys
-  // staged answers 200 with its SPA fallback HTML) without hashing megabytes.
-  if (bytes.byteLength !== expected.size) return false;
-  return (await sha256Hex(bytes)) === expected.sha256;
-}
-
-/**
- * A 500 carrying the reason, so the SDK's prover error path handles it as a
- * server rejection rather than a retryable transport fault.
- */
-function proverErrorResponse(
-  error: unknown,
-  onMeasurement?: (measurement: Measurement) => void,
-): Response {
-  const safe = new WasmProverError(error instanceof WasmProverError ? error.code : undefined);
-  onMeasurement?.({ step: "transfer-prove", ms: 0, note: safe.code });
-  return new Response(JSON.stringify({ code: safe.code, message: safe.message }), {
-    status: 500,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function rethrowAbort(error: unknown, signal?: AbortSignal): void {
-  signal?.throwIfAborted();
-  if (error instanceof Error && error.name === "AbortError") throw error;
-}
-
-async function optionalCache<T>(
-  operation: () => T | Promise<T>,
-  signal: AbortSignal,
-): Promise<T | undefined> {
-  try {
-    return await abortable(Promise.resolve().then(operation), signal);
-  } catch (error) {
-    rethrowAbort(error, signal);
-    return undefined;
-  }
 }

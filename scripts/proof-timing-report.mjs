@@ -202,11 +202,13 @@ export function runnersMarkdown(reports, runners, baselines, flag, { repo, after
   const lines = ["### Proof timing in Chrome", ""];
   if (after)
     lines.push(
-      before ? `**Before:** ${before}. **After:** ${after}.` : `**After:** ${after}. No report of \`main\` to compare with yet.`,
+      before
+        ? `**Before:** ${before}, on the same processor. **After:** ${after}.`
+        : `**After:** ${after}. No report of \`main\` on the same processor to compare with yet.`,
       "",
     );
   lines.push(
-    "The proof, key loaded, by shape (notes → outputs): medians of each runner, headless Chrome on the runner's own processors. The Linux runner, a server VM, says whether a commit made proving faster or slower; the macOS runner, an Apple M1 VM, is the nearest to a laptop. Each runner's key load and first runs are in its tables below.",
+    "The proof, key loaded, by shape (notes → outputs): medians of each runner, headless Chrome on the runner's own processors. The Linux runner, a server VM, says whether a commit made proving faster or slower, against `main` on the same processor type; the macOS runner, an Apple M1 VM, is the nearest to a laptop and is not compared, since its times vary up to twice over between runs of one commit. Each runner's key load and first runs are in its tables below.",
     "",
   );
   const baselineReports = Object.keys(baselines).length

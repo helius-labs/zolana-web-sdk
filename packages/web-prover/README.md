@@ -2,23 +2,32 @@
 
 Local Groth16 proving and gnark verification in a browser worker. The core package has no protocol SDK or Solana dependencies. Transaction building, submission and benchmark orchestration live in the repository's browser example, not this package.
 
-## Install and serve assets
+## Install
 
 ```sh
 npm install @heliuslabs/zolana-web-prover
-npx --no-install zolana-prover-assets --output public --keys none
 ```
 
-The package contains the worker and the prover runtime: zopro-zolana built for the browser, one WebAssembly module that turns a `/prove` request into the circuit's witness, proves on a thread pool (and on WebGPU where the browser offers it) and verifies the proof before it returns it. Keys load on first use from the pinned key set on the Zolana key CDN, which serves them with CORS, and are checked against the size and SHA-256 bundled in the package, so an app installs none. The asset command installs the runtime, each file checked against the package's runtime manifest, and a sample request into your app's public directory; without `--keys none` it also installs the 2-input/2-output key for self-hosting, checked against the packaged `zopro-keys.lock`. It needs Node.js, and network access only for keys. Installation itself does not run downloads. For a local mirror, set `ZOLANA_KEYS_BASE_URL` to a `file:///.../` directory holding the keys; the same digest checks apply.
+The package contains the worker and the prover runtime: zopro-zolana built for the browser, one WebAssembly module that turns a `/prove` request into the circuit's witness, proves on a thread pool (and on WebGPU where the browser offers it) and verifies the proof before it returns it. Import it, and the app's bundler emits the runtime's module, its wasm and its thread helpers as files beside the worker; the packed-consumer CI builds an app with Vite and with webpack 5 and proves from both. A bundler that does not emit `new URL(…, import.meta.url)` assets and nested module workers (esbuild and Rollup without plugins) cannot load the runtime. Keys load on first use from the pinned key set on the Zolana key CDN, which serves them with CORS, and are checked against the size and SHA-256 bundled in the package, so an app installs none.
 
-Serve `public/prover` without flattening its `snippets` directory, `public/keys` if you self-host keys, and, for the demo, `public/fixtures`. Serve `.wasm` as `application/wasm`, `.js` as JavaScript, and the document with:
+Serve the document with:
 
 ```text
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-Use HTTPS (localhost is suitable for development) and a bundler that preserves the emitted module worker asset URL; the packed-consumer CI tests Vite's production build. The runtime's thread pool shares memory between workers, so these headers are required: without cross-origin isolation the prover does not start. `threads` sizes the pool (one or more; by default the browser's processors, at most 18). Apply compatible CORS/CORP policies if you host assets on another origin. Every key is checked against the size and SHA-256 bundled in the package from the pinned `zopro-keys.lock`, so the key host does not need to be trusted for integrity.
+Use HTTPS (localhost is suitable for development). The runtime's thread pool shares memory between workers, so these headers are required: without cross-origin isolation the prover does not start. `threads` sizes the pool (one or more; by default the browser's processors, at most 18). Every key is checked against the size and SHA-256 bundled in the package from the pinned `zopro-keys.lock`, so the key host does not need to be trusted for integrity.
+
+In a Chrome extension, prove from an extension page; an extension's service worker cannot start workers. Give the manifest the same isolation and allow WebAssembly:
+
+```json
+"cross_origin_embedder_policy": { "value": "require-corp" },
+"cross_origin_opener_policy": { "value": "same-origin" },
+"content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" }
+```
+
+The packed-consumer CI proves from such a page at one and two threads.
 
 ## Prove locally
 
@@ -26,7 +35,6 @@ Use HTTPS (localhost is suitable for development) and a bundler that preserves t
 import { ZolanaWebProver, WasmProverError } from "@heliuslabs/zolana-web-prover";
 
 const prover = new ZolanaWebProver({
-  runtimeUrl: new URL("/prover/", location.href).href,
   proverUrl: "https://local-prover.invalid",
 });
 
@@ -44,15 +52,17 @@ try {
 
 ## Self-host proving keys
 
-To serve keys yourself, for offline use, a mirror or your own CDN, install the shapes your application's requests need and pass their location as `keyBaseUrl` (for example `keyBaseUrl: "/keys"`). Without `--keys`, the asset command installs only the demo's 2x2 key; real transfer shapes may differ (for example, 1x2):
+To serve keys yourself, for offline use, a mirror or your own CDN, install the shapes your application's requests need and pass their location as `keyBaseUrl` (for example `keyBaseUrl: "/keys"`):
 
 ```sh
-npx --no-install zolana-prover-assets --output public --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key
+npx --no-install zolana-prover-keys --output public/keys --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key
 ```
 
-A key is named after the gnark proving key it was built from, and installs as `<name>.zopro`. `--keys` replaces the default selection. Names must be confidential-transfer or merge keys present in the pinned `zopro-keys.lock`; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list.
+A key is named after the gnark proving key it was built from, and installs as `<name>.zopro`. Names must be confidential-transfer or merge keys present in the pinned `zopro-keys.lock`; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list. The command needs Node.js and network access; for a local mirror of the key set, set `ZOLANA_KEYS_BASE_URL` to a `file:///.../` directory, and the same checks apply.
 
-Keys are 7–302 MB each for confidential transfers (12 MB for 2x2, 73 MB for 12x8) and 42–315 MB for merge; a loaded key and its proofs need additional memory. Only one loaded key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points and builds its solver, which takes a second or more in wasm (1.5 s for 2x2), and stores the result, the raw form, in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in a few tens of milliseconds (0.03 s for 2x2). The raw form is about three times the file's size, and storage is subject to the browser's quota. Keys live in the Cache API store `zolana-proving-keys-<key set>`, and stores left by other key sets are deleted on first use. Pass `persistStorage: true` to ask the browser not to evict them under storage pressure (`navigator.storage.persist()`; Firefox asks the user). Install only the shapes you use, and budget separately for download/storage size and runtime memory.
+Keys are 7–302 MB each for confidential transfers (12 MB for 2x2, 73 MB for 12x8) and 42–315 MB for merge; a loaded key and its proofs need additional memory. Only one loaded key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points and builds its solver, which takes a second or more in wasm (1.5 s for 2x2), and stores the result, the raw form, in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in a few tens of milliseconds (0.03 s for 2x2); it is checked by size, not hashed again, since a damaged entry fails its load and is rebuilt from the pinned key. The raw form is about three times the file's size, and storage is subject to the browser's quota. Keys live in the Cache API store `zolana-proving-keys-<key set>`, and stores left by other key sets are deleted on first use. Pass `persistStorage: true` to ask the browser not to evict them under storage pressure (`navigator.storage.persist()`; Firefox asks the user). Install only the shapes you use, and budget separately for download/storage size and runtime memory.
+
+A key downloads in ranged parts of 8 MB, each kept in the cache as it arrives, so a download that a closed tab, a lost connection or an abort interrupted resumes where it stopped; a host that ignores ranges sends the whole key instead. The key is checked against the lockfile once it is whole, and a download that resumed from a damaged part starts over once.
 
 ## Prefetch keys
 
@@ -67,6 +77,14 @@ await prover.prefetch({
 
 `stage` is `download` while bytes arrive and `decode` once the worker starts loading the key. Pass `onKeyProgress` to the constructor to receive the same events for every load, including the ones a proof triggers. Without the Cache API only the last prefetched shape stays loaded.
 
+`neededKeys(maxInputs, outputs, maxMergeInputs)` names the shapes that spends of up to `maxInputs` notes with `outputs` outputs, and merges of up to `maxMergeInputs` notes, prove with, smallest first, for `prefetch`; a transfer has two outputs, the payment and the change. `provingKeys()` lists every key the prover can load with its size, the bytes the browser keeps of it and whether its decoded form is kept, without starting the worker. `clearKeys()` removes the kept keys, their decoded forms and interrupted downloads after any work in progress. These follow the mobile SDK's `ProvingKeys.needed`, `status` and `clear`:
+
+```ts
+const shapes = neededKeys(8, [2], 24); // spends of up to 8 notes, merges of up to 24
+await prover.prefetch({ shapes });
+const kept = (await prover.provingKeys()).reduce((sum, key) => sum + key.downloaded, 0);
+```
+
 ## Lifecycle and failures
 
 - First use initializes the worker automatically. Requests are serialized; only one loaded key is resident at a time.
@@ -75,4 +93,4 @@ await prover.prefetch({
 - `terminate()` rejects outstanding work, clears the factory and disables automatic restart. Create a new prover, or explicitly call `start(factory)` to reuse the object. A supplied single `Worker` cannot be recreated automatically.
 - `WasmProverError.code` and its fixed message identify failures without serializing backend messages, witness values, causes or stacks from the backend. Core code does not log errors. The fetch adapter returns a JSON 500 with the safe `code` and `message`; cancellation rejects instead. Caller-provided abort reasons and callback errors remain caller-controlled and should not contain secrets.
 
-The runtime is built from the zopro revision the repository's `runtime.lock.json` pins and bundled in the package. The worker sends only error codes across its boundary, and the API redacts anything else as defense in depth.
+The runtime is built from the zopro revision the repository's `runtime.lock.json` pins, with Rayon's thread helpers for bundlers, and ships in the package. The worker sends only error codes across its boundary, and the API redacts anything else as defense in depth.

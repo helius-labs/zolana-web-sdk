@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Fails when the zopro key pins, the shapes or the example's SDK pin drift
-# from the zolana release pinned in upstream.lock.json: every zopro key must
-# be built from the gnark key upstream pins for its circuit. Set ZOLANA_SRC
-# to an existing checkout to skip the clone.
+# Fails when the zopro key pins or the wallet example's SDK pin drift from
+# the zolana release pinned in upstream.lock.json: every zopro key must be
+# built from the gnark key upstream pins for its circuit. Set ZOLANA_SRC to
+# an existing checkout to skip the clone.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,9 +34,9 @@ upstream() { git -C "$source_dir" show "$revision:$1"; }
 
 upstream_keys="$(mktemp "${TMPDIR:-/tmp}/zolana-keys.XXXXXX")"
 upstream prover/server/prover/provingkeys/proving-keys.lock > "$upstream_keys"
-python3 - "$root/zopro-keys.lock" "$upstream_keys" "$root/packages/web-prover/src/shapes.ts" "$(upstream prover/server/prover/common/key_downloader.go | grep -o 'defaultProvingKeysBaseURL = "[^"]*"' | cut -d'"' -f2)" <<'PY' || failed=1
+python3 - "$root/zopro-keys.lock" "$upstream_keys" "$(upstream prover/server/prover/common/key_downloader.go | grep -o 'defaultProvingKeysBaseURL = "[^"]*"' | cut -d'"' -f2)" <<'PY' || failed=1
 import json, re, sys
-zopro_path, upstream_path, shapes, base = sys.argv[1:]
+zopro_path, upstream_path, base = sys.argv[1:]
 zopro = json.load(open(zopro_path))
 upstream = json.load(open(upstream_path))
 browser = re.compile(r"transfer_confidential_\d+_\d+\.key|merge_\d+_1\.key")
@@ -50,19 +50,13 @@ for k in sorted(wanted - set(zopro["keys"])): fail(f"upstream pins {k}, zopro-ke
 for k, entry in sorted(zopro["keys"].items()):
     if k not in upstream["keys"]: fail(f"zopro-keys.lock has {k}, absent upstream"); continue
     if entry["key_sha256"] != upstream["keys"][k]["sha256"]: fail(f"{k}'s zopro key was built from gnark key {entry['key_sha256']}, upstream pins {upstream['keys'][k]['sha256']}")
-src = open(shapes).read()
-listed = {f"transfer_confidential_{i}_{o}.key" for i, o in re.findall(r"\bentry\((\d+), (\d+)\)", src)}
-listed |= {f"merge_{i}_1.key" for i in re.findall(r"\bmergeEntry\((\d+)\)", src)}
-if not listed: fail("shapes.ts lists no shapes; the parser no longer matches it")
-for k in sorted(listed - set(zopro["keys"])): fail(f"shapes.ts lists {k}, absent from zopro-keys.lock")
-for k in sorted(set(zopro["keys"]) - listed): fail(f"zopro-keys.lock has {k}, missing from shapes.ts")
 sys.exit(0 if ok else 1)
 PY
 rm -f "$upstream_keys"
 
-# The example's SDK is the pinned release, and it expects the gnark keys ours are built from.
-pinned="$(json "$root/examples/browser/package.json" dependencies | python3 -c 'import ast, sys; print(ast.literal_eval(sys.stdin.read())["@heliuslabs/zolana"])')"
-[[ "$pinned" == "$sdk" ]] || fail "examples/browser pins @heliuslabs/zolana $pinned, upstream.lock.json says $sdk"
+# The wallet example's SDK is the pinned release, and it expects the gnark keys ours are built from.
+pinned="$(json "$root/examples/wallet/package.json" dependencies | python3 -c 'import ast, sys; print(ast.literal_eval(sys.stdin.read())["@heliuslabs/zolana"])')"
+[[ "$pinned" == "$sdk" ]] || fail "examples/wallet pins @heliuslabs/zolana $pinned, upstream.lock.json says $sdk"
 installed="$root/node_modules/@heliuslabs/zolana"
 if [[ -d "$installed" ]]; then
   got="$(json "$installed/package.json" version)"

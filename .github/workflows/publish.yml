@@ -1,0 +1,54 @@
+name: Publish
+
+# Publishes @heliuslabs/zolana-web-prover when a `web-prover-v<version>` tag is
+# pushed: the checks and the consumer gate run first, the tag must name the
+# package's version, and npm's trusted publishing authenticates the job, with
+# provenance, so no token is stored. Every release becomes `latest`.
+on:
+  push:
+    tags: ["web-prover-v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      # The prover runtime builds from the zopro revision runtime.lock.json pins.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-11-15
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
+      - name: The tag names the package's version
+        run: |
+          version="$(node -p 'require("./packages/web-prover/package.json").version')"
+          if [[ "$GITHUB_REF_NAME" != "web-prover-v$version" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not name version $version"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run check
+      - uses: actions/cache@v5
+        with:
+          path: target/chrome-for-testing
+          key: chrome-for-testing-${{ runner.os }}-${{ hashFiles('scripts/test-packed-consumer.mjs') }}
+      - run: npm run test:consumer
+        env:
+          CHROME_NO_SANDBOX: "1"
+      - name: Publish
+        run: npm publish --workspace @heliuslabs/zolana-web-prover --provenance --access public --tag latest

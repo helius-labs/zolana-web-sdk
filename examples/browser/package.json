@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Browser benchmark for local Zolana proving with zopro.",
   "scripts": {
+    "keys": "node ../../packages/web-prover/dist/scripts/install-keys.mjs --output public/keys --keys transfer_confidential_2_2.key",
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
@@ -13,14 +14,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@heliuslabs/zolana": "0.4.0-alpha",
-    "@solana/kit": "^8.3.0",
-    "@heliuslabs/zolana-web-prover": "^0.2.0-alpha",
+    "@heliuslabs/zolana-web-prover": "^0.3.1-alpha",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@solana-program/system": "^0.14.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",

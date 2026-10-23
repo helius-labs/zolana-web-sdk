@@ -1,5 +1,5 @@
 // The prover's GPU kernels timed in Chrome: proves each shape's fixture with
-// the runtime under public/prover, its WebGPU passes timed by timestamp
+// the runtime the package ships, its WebGPU passes timed by timestamp
 // queries (the runtime's gpu_profile), and prints each kernel's time per
 // proof beside the proof times. A profile for kernel work, not the bench.
 //
@@ -13,6 +13,8 @@ const shapes = (process.env.ZOLANA_PROFILE_SHAPES || "2x2,8x2,24x2").split(",");
 const threads = Number(process.env.ZOLANA_PROFILE_THREADS || 4);
 const rounds = Number(process.env.ZOLANA_PROFILE_ROUNDS || 3);
 const root = fileURLToPath(new URL("../", import.meta.url));
+// The built package's runtime, which the dev server serves from the workspace.
+const runtime = `/@fs${fileURLToPath(new URL("../../../packages/web-prover/dist/runtime/", import.meta.url))}`;
 const server = await createServer({ root, logLevel: "warn", server: { port: 5179, strictPort: false } });
 await server.listen();
 const options = new chrome.Options().addArguments("--headless=new");
@@ -23,12 +25,12 @@ try {
   await driver.get(server.resolvedUrls.local[0]);
   await driver.manage().setTimeouts({ script: 1800000 });
   const lines = await driver.executeAsyncScript(
-    function (shapes, threads, rounds, done) {
+    function (runtime, shapes, threads, rounds, done) {
       const code = `
         self.onmessage = async ({ data }) => {
           const out = [];
           try {
-            const m = await import(data.base + "/prover/zopro_zolana.js");
+            const m = await import(data.base + data.runtime + "zopro_zolana.js");
             await m.default();
             await m.initThreadPool(data.threads);
             m.gpu_profile(true);
@@ -63,8 +65,9 @@ try {
       const worker = new Worker(url, { type: "module" });
       worker.onmessage = (e) => done(e.data);
       worker.onerror = (e) => done(["worker error " + e.message]);
-      worker.postMessage({ base: location.origin, shapes, threads, rounds });
+      worker.postMessage({ base: location.origin, runtime, shapes, threads, rounds });
     },
+    runtime,
     shapes,
     threads,
     rounds,

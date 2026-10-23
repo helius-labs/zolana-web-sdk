@@ -1,6 +1,7 @@
 /**
  * The prover runtime: zopro-zolana's `web` module as wasm-bindgen emits it
- * (`zopro_zolana.js` beside its wasm and `snippets/`).
+ * (`zopro_zolana.js` beside its wasm and `snippets/`), which the package ships
+ * in `runtime/` beside the compiled worker.
  */
 
 /** A loaded key, `ZolanaProver` in zopro-zolana. */
@@ -30,16 +31,17 @@ export interface ProofValue {
 export interface Runtime {
   default(): Promise<unknown>;
   initThreadPool(threads: number): Promise<void>;
-  /** Requests WebGPU; keys loaded after it prove their MSMs and quotient there. */
-  init_gpu(): Promise<void>;
+  /**
+   * Requests WebGPU; keys loaded after it prove their MSMs and quotient there.
+   * False without WebGPU.
+   */
+  init_gpu(): Promise<boolean>;
   /** The layout of the raw form `export_raw` writes. */
   raw_format(): string;
   ZolanaProver: new (key: Uint8Array) => ZolanaProver;
 }
 
-/** Imports the runtime from the directory at `url`, uninitialized. */
-export async function importRuntime(url: string): Promise<Runtime> {
-  const directory = new URL(url, self.location.href);
-  if (!directory.pathname.endsWith("/")) directory.pathname += "/";
-  return (await import(/* @vite-ignore */ new URL("zopro_zolana.js", directory).href)) as Runtime;
+/** Imports the runtime, uninitialized; the app's bundler emits it with its wasm and thread helpers. */
+export async function importRuntime(): Promise<Runtime> {
+  return await import("./runtime/zopro_zolana.js");
 }

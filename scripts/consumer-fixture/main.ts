@@ -13,7 +13,6 @@ window.checkPackedProver = async () => {
   const results: unknown[] = [];
   for (const threads of [1, 2]) {
     const prover = new ZolanaWebProver({
-      runtimeUrl: "/prover/",
       keyBaseUrl: "/keys",
       proverUrl: location.origin + "/local",
       threads,

@@ -30,6 +30,10 @@ jobs:
       - run: npm run test:browser
         env:
           CHROME_NO_SANDBOX: "1"
+      - uses: actions/cache@v5
+        with:
+          path: target/chrome-for-testing
+          key: chrome-for-testing-${{ runner.os }}-${{ hashFiles('scripts/test-packed-consumer.mjs') }}
       - run: npm run test:consumer
         env:
           CHROME_NO_SANDBOX: "1"
@@ -133,6 +137,9 @@ jobs:
       - name: Proof timing report
         env:
           GH_TOKEN: ${{ github.token }}
+          # The macOS VM's times vary up to twice over between runs of one
+          # commit on one processor, so only Linux is compared.
+          ZOLANA_TIMING_COMPARE: chrome-linux
         run: bash scripts/proof-timing-ci.sh
       - if: github.event_name == 'push'
         env:
