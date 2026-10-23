@@ -7,7 +7,7 @@ Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a 
 ## Packages
 
 - `@heliuslabs/zolana-web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
-- [`examples/wallet`](examples/wallet/README.md) is the integration example: a private wallet on devnet-d that registers, shields, sends privately and unshields, with every proof made in the page. Start here. It installs `@heliuslabs/zolana` from npm, so it stays on 0.4.0-alpha, which neither devnet-d nor the pinned keys serve, until 0.5.0-alpha is published (see [UPSTREAM.md](UPSTREAM.md)).
+- [`examples/wallet`](examples/wallet/README.md) is the integration example: a private wallet on devnet-d that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
 - `examples/browser` is the prover benchmark: it proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, on one proof or five, and the proof timing harness drives it.
 - `@heliuslabs/zolana-web-prover` matches zolana v0.5.0-alpha's `/prove` requests and proving keys (key set `8e234b5a589cfb79`, merges of up to 24 notes in the browser; see [UPSTREAM.md](UPSTREAM.md)) without depending on `@heliuslabs/zolana`. devnet-d runs that release: shielded pool `spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt`, user registry `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`.
 - The prover runtime is zopro-zolana, Zolana's requests on zopro (a Rust Groth16 prover for gnark circuits), built for the browser from the zopro revision `runtime.lock.json` pins. Its keys are zopro keys built from the gnark proving keys the SDK pins, pinned in `zopro-keys.lock`.
@@ -78,7 +78,7 @@ The keys are zopro keys: one file per circuit with the gnark proving key's point
 A release is a pull request that sets `packages/web-prover/package.json`'s version and dates its `CHANGELOG.md` entry. After it merges, push the tag from `main`:
 
 ```sh
-git tag web-prover-v0.3.1-alpha && git push origin web-prover-v0.3.1-alpha
+git tag web-prover-v0.4.0-alpha && git push origin web-prover-v0.4.0-alpha
 ```
 
 The `Publish` workflow runs the checks and the consumer gate, refuses a tag that does not name the package's version, and publishes with provenance as `latest`. It authenticates through npm's trusted publishing, which the package's settings on npmjs.com must name: GitHub Actions, `helius-labs/zolana-web-sdk`, workflow `publish.yml`.
