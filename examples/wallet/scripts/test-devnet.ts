@@ -2,7 +2,7 @@
 // sends privately, sends with an app fee and unshields, and every proof must be made in the page.
 //
 //   ZOLANA_E2E_FUNDER=~/.config/solana/id.json \
-//   VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=$API_KEY" npm run test:devnet
+//   VITE_SOLANA_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" npm run test:devnet
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

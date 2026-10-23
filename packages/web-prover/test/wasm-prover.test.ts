@@ -175,6 +175,18 @@ describe("fetch cancellation", () => {
     expect(TestWorker.instances).toHaveLength(0);
   });
 
+  it("refuses a merge wider than the browser proves, before any key fetch", async () => {
+    const { prover, fetch } = await fixture();
+    const wide = JSON.stringify({ circuitType: "merge", inputs: Array.from({ length: 52 }, () => ({})) });
+    const response = await prover.createFetch()(proveBase, { method: "POST", body: wide });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ code: "wasm_merge_too_wide" });
+    await expect(prover.proveRequest(wide)).rejects.toMatchObject({ code: "wasm_merge_too_wide" });
+    expect(fetch).not.toHaveBeenCalled();
+    prover.terminate();
+  });
+
   it("rejects a pre-aborted signal before any key fetch or worker work", async () => {
     const { prover, fetch } = await fixture();
     const signal = AbortSignal.abort();

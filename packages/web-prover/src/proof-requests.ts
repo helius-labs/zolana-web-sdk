@@ -1,4 +1,4 @@
-import { keyForProveRequest, type ShapeKey } from "./shapes.js";
+import { keyForProveRequest, MAX_BROWSER_MERGE_INPUTS, type ShapeKey } from "./shapes.js";
 import { abortable } from "./abortable.js";
 
 /**
@@ -57,6 +57,24 @@ export function observeProofRequests(
     }
     return fetch(input, init);
   };
+}
+
+/** Whether `body` is a merge of more notes than the browser proves. */
+export function isWideMerge(body: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "circuitType" in parsed &&
+      parsed.circuitType === "merge" &&
+      "inputs" in parsed &&
+      Array.isArray(parsed.inputs) &&
+      parsed.inputs.length > MAX_BROWSER_MERGE_INPUTS
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function proofRequestShape(body: string): ShapeKey | undefined {

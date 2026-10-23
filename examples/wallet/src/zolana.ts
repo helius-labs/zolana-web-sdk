@@ -29,10 +29,11 @@ import { ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover
 import { buildPaymentsTransaction, type Payment } from "./multi-transfer.js";
 export type { Payment };
 
+// devnet-d's indexer and prover directly, until the Helius gateway serves devnet-d.
 export const endpoints = {
   solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
-  indexerUrl: import.meta.env.VITE_INDEXER_URL ?? "https://d2xah7tnhdhcom.cloudfront.net",
-  proverUrl: import.meta.env.VITE_PROVER_URL ?? "https://d21ni15goiip6l.cloudfront.net",
+  indexerUrl: import.meta.env.VITE_INDEXER_URL ?? "https://d21d98xh5lgv3b.cloudfront.net",
+  proverUrl: import.meta.env.VITE_PROVER_URL ?? "https://d1unet9hn0mci0.cloudfront.net",
 };
 
 type Client = Awaited<ReturnType<typeof createZolanaClient>>;

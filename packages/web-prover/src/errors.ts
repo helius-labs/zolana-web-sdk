@@ -7,6 +7,7 @@ const messages = {
   wasm_worker_terminated: "Prover worker terminated",
   wasm_invalid_response: "Invalid prover response",
   wasm_invalid_request: "Unsupported circuit or malformed request",
+  wasm_merge_too_wide: "The browser merges at most 24 notes",
   wasm_key_manifest_error: "The proving key is not in the pinned key set",
   wasm_key_download_failed: "Proving-key download failed",
   wasm_key_digest_mismatch: "Proving key does not match the lockfile; stage the pinned assets",
