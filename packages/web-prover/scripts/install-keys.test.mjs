@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
 
-function digest(bytes) {
-  return { size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+function digest(file, bytes) {
+  return { file, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
 async function fixture(context) {
@@ -18,16 +18,16 @@ async function fixture(context) {
   for (const name of ["install-keys.mjs", "assets.mjs"])
     await copyFile(new URL(`./${name}`, import.meta.url), join(root, "scripts", name));
   const bytes = Buffer.from("synthetic proving key");
-  for (const name of ["transfer_confidential_2_2.key", "transfer_confidential_1_2.key", "merge_8_1.key"]) {
+  for (const name of ["transfer_confidential_2_2.zopro", "transfer_confidential_1_2.zopro", "merge_8_1.zopro"]) {
     await writeFile(join(root, "keys", name), bytes);
     await writeFile(join(root, "mirror", name), bytes);
   }
   // The digests the package bundles, beside which the command runs.
   const keysUrl = pathToFileURL(`${join(root, "keys")}/`).href;
   const digests = {
-    "transfer_confidential_2_2.key": digest(bytes),
-    "transfer_confidential_1_2.key": digest(bytes),
-    "merge_8_1.key": digest(bytes),
+    "transfer_confidential_2_2.key": digest("transfer_confidential_2_2.zopro", bytes),
+    "transfer_confidential_1_2.key": digest("transfer_confidential_1_2.zopro", bytes),
+    "merge_8_1.key": digest("merge_8_1.zopro", bytes),
   };
   await writeFile(
     join(root, "key-digests.js"),
@@ -42,17 +42,17 @@ async function fixture(context) {
   return { root, output, bytes, run };
 }
 
-test("installs only the selected locked keys and reuses intact ones", async (context) => {
+test("installs the zopro files of only the selected locked keys and reuses intact ones", async (context) => {
   const { output, bytes, run } = await fixture(context);
   const args = ["--output", output, "--keys", "transfer_confidential_1_2.key,merge_8_1.key"];
   const result = run(args);
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(await readFile(join(output, "transfer_confidential_1_2.key")), bytes);
-  assert.deepEqual(await readFile(join(output, "merge_8_1.key")), bytes);
-  await assert.rejects(readFile(join(output, "transfer_confidential_2_2.key")), { code: "ENOENT" });
+  assert.deepEqual(await readFile(join(output, "transfer_confidential_1_2.zopro")), bytes);
+  assert.deepEqual(await readFile(join(output, "merge_8_1.zopro")), bytes);
+  await assert.rejects(readFile(join(output, "transfer_confidential_2_2.zopro")), { code: "ENOENT" });
   const again = run(args);
   assert.equal(again.status, 0, again.stderr);
-  assert.match(again.stdout, /Using .*merge_8_1\.key/);
+  assert.match(again.stdout, /Using .*merge_8_1\.zopro/);
 });
 
 test("reads keys from the mirror ZOLANA_KEYS_BASE_URL names", async (context) => {
@@ -61,16 +61,16 @@ test("reads keys from the mirror ZOLANA_KEYS_BASE_URL names", async (context) =>
   const mirror = pathToFileURL(`${join(root, "mirror")}/`).href;
   const result = run(["--output", output, "--keys", "merge_8_1.key"], { ZOLANA_KEYS_BASE_URL: mirror });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(await readFile(join(output, "merge_8_1.key")), bytes);
+  assert.deepEqual(await readFile(join(output, "merge_8_1.zopro")), bytes);
 });
 
 test("refuses key bytes that do not match the lockfile", async (context) => {
   const { root, output, run } = await fixture(context);
-  await writeFile(join(root, "keys/transfer_confidential_1_2.key"), "corrupt");
+  await writeFile(join(root, "keys/transfer_confidential_1_2.zopro"), "corrupt");
   const result = run(["--output", output, "--keys", "transfer_confidential_1_2.key"]);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /transfer_confidential_1_2\.key has size/);
-  await assert.rejects(readFile(join(output, "transfer_confidential_1_2.key")), { code: "ENOENT" });
+  assert.match(result.stderr, /transfer_confidential_1_2\.zopro has size/);
+  await assert.rejects(readFile(join(output, "transfer_confidential_1_2.zopro")), { code: "ENOENT" });
 });
 
 test("rejects unsupported, malformed and duplicate selections and missing flags", async (context) => {
@@ -89,5 +89,5 @@ test("rejects unsupported, malformed and duplicate selections and missing flags"
   assert.notEqual(run(["--keys", "merge_8_1.key"]).status, 0);
   assert.notEqual(run(["--output", output, "--keys"]).status, 0);
   assert.notEqual(run(["--output", output, "--keys", "merge_8_1.key", "--keys", "merge_8_1.key"]).status, 0);
-  await assert.rejects(readFile(join(output, "merge_8_1.key")), { code: "ENOENT" });
+  await assert.rejects(readFile(join(output, "merge_8_1.zopro")), { code: "ENOENT" });
 });

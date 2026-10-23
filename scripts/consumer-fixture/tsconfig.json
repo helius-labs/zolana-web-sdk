@@ -9,5 +9,5 @@
     "skipLibCheck": false,
     "noEmit": true
   },
-  "include": ["main.ts", "raw-bridge.worker.ts"]
+  "include": ["main.ts"]
 }

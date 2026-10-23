@@ -2,15 +2,15 @@
 
 Local Zolana Groth16 proving in the browser: `@heliuslabs/zolana-web-prover`, a private wallet example that proves every transaction in the page, and a prover benchmark.
 
-**Performance.** With runtime 0.3.2 in Chrome at four threads on an Apple M5 Pro, a warm proof (key loaded, nothing to download) takes 0.20 s for one note to two outputs, 0.31 s for two, 0.54 s for four, 0.97 s for eight, 1.8 s for sixteen and 2.7 s for twenty-four; the first proof after a page reload adds the key's load from the raw-key cache (0.08 s to 1.8 s), and the first ever its download (9 MB to 180 MB). CI benches every pull request on four-core runners, about 3.5 times slower than that machine, and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+**Performance.** With the zopro runtime in Chrome at four threads on an Apple M5 Pro, with WebGPU, a warm proof (key loaded, nothing to download) takes 0.06 s for one note to two outputs, 0.08 s for two, 0.11 s for four, 0.17 s for eight, 0.30 s for sixteen and 0.43 s for twenty-four. Without WebGPU the CPU alone takes 0.28 s for two notes, 0.87 s for eight and 2.6 s for twenty-four. The first proof after a page reload adds the key's load from the raw-key cache (0.02 s to 0.32 s). The first ever adds its download (7 MB to 145 MB) and its decode (1 s to 17 s). CI benches every pull request on four-core runners and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-web-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Packages
 
 - `@heliuslabs/zolana-web-prover` owns the worker lifecycle, proving-key cache, request interception, cancellation, local proof generation, and native verification.
 - [`examples/wallet`](examples/wallet/README.md) is the integration example: a devnet private wallet on the published `@heliuslabs/zolana@0.4.0-alpha` that registers, shields, sends privately and unshields, with every proof made in the page. Start here.
-- `examples/browser` is the prover benchmark: it proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, to time the Go and Arkworks engines on one proof or five, and the proof timing harness drives it.
+- `examples/browser` is the prover benchmark: it proves a synthetic 2x2 transfer request, a valid witness for the real proving key whose tree roots exist on no chain, on one proof or five, and the proof timing harness drives it.
 - `@heliuslabs/zolana-web-prover` matches `@heliuslabs/zolana@0.4.0-alpha`'s `/prove` requests and proving keys (see [UPSTREAM.md](UPSTREAM.md)) without depending on it.
-- `wasm` is a self-contained Go module for the browser prover bridge.
+- The prover runtime is zopro-zolana, Zolana's requests on zopro (a Rust Groth16 prover for gnark circuits), built for the browser from the zopro revision `runtime.lock.json` pins. Its keys are zopro keys built from the gnark proving keys the SDK pins, pinned in `zopro-keys.lock`.
 
 ## Setup
 
@@ -21,21 +21,21 @@ npm run dev         # the benchmark
 npm run dev:wallet  # the wallet example, after its setup in examples/wallet/README.md
 ```
 
-`npm run setup` builds the package, with the sanitized Go bridge built by Go 1.27.1 and the pinned accelerator fetched from its runtime release and checked against `runtime.lock.json`, stages the request fixtures, and installs the 2-input/2-output proving key for the benchmark (`npm run keys` in `examples/browser`). Source builds require Go; an app that installs the package needs only its bundler, not Go, Rust, Mopro or `wasm-pack`.
+`npm run setup` builds the package, with the prover runtime built from the pinned zopro revision with Rust `nightly-2025-11-15` (the `wasm32-unknown-unknown` target and `rust-src`) and wasm-bindgen 0.2.128, stages the request fixtures, and installs the 2-input/2-output proving key for the benchmark (`npm run keys` in `examples/browser`). `ZOPRO_DIR` builds from a zopro checkout instead of a clone of the pinned revision, and `ZOLANA_KEYS_BASE_URL` takes keys from a mirror such as a `file:///.../` directory. Source builds require Rust; an app that installs the package needs only its bundler, not Rust or wasm-bindgen.
 
-The demo requires cross-origin isolation for the threaded Mopro kernel. Its Vite server already sends the required COOP/COEP headers.
+The demo requires cross-origin isolation for the runtime's thread pool. Its Vite server already sends the required COOP/COEP headers.
 
 ## Validation
 
 ```sh
-npm run typecheck   # the package's declarations and the examples, without Go
-npm run check       # unit, script and Go tests, the builds, the pack dry run
+npm run typecheck   # the runtime, the package's declarations and the examples
+npm run check       # unit and script tests, the builds, the pack dry run
 npm run check:full  # also the browser test and the consumer gate
 ```
 
 The browser test starts and stops its own Vite server; set `DEMO_URL` only when testing an already-running deployment. CI runs these hermetic gates; the wallet example's devnet test, run by hand with a funded key, is the end-to-end check with requests the SDK builds.
 
-The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages and with no asset step, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, builds an app with Vite and with webpack 5, and runs Go and Arkworks proofs from both builds and from the Vite build loaded as an MV3 extension page, with malformed-witness privacy and recovery checks. It needs Chrome, and installs Chrome for Testing under `target/` for the extension, which branded Chrome no longer loads from the command line.
+The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages and with no asset step, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, builds an app with Vite and with webpack 5, and runs proofs at one and two threads from both builds and from the Vite build loaded as an MV3 extension page, with malformed-witness privacy and recovery checks. It needs Chrome, and installs Chrome for Testing under `target/` for the extension, which branded Chrome no longer loads from the command line.
 
 The opt-in devnet gate drives the wallet example in Chrome: a fresh key registers, shields, sends privately, sends with an app fee and unshields through the published SDK, and every proof must be made in the page:
 
@@ -61,21 +61,17 @@ node scripts/proof-timing-report.mjs --logs /tmp/timing
 
 The lines land in `/tmp/timing/<label>/` (`chrome-linux`, `chrome-macos` or `chrome-windows` unless `ZOLANA_TIMING_LABEL` names the machine), beside a `runner.json` with the browser, system, processor, memory and thread count; `ZOLANA_TIMING_BUILT=1` times the built page (`npm run build:example`) instead of the dev server.
 
-The requests are `wasm/prover-wasm/testdata/transfer-*.json` and `merge-*.json`, valid witnesses on trees of their own (the mobile SDK's `tools/prove-fixtures` wrote them). Keys load from where the page loads them, so set `VITE_ZOLANA_KEYS_URL` to the key CDN for shapes not staged under `public/keys`. `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per shape and run; `ZOLANA_TIMING_THREADS=4` sizes the kernel's pool as on a four-core laptop.
+The requests are `fixtures/transfer-*.json` and `merge-*.json`, valid witnesses on trees of their own (the mobile SDK's `tools/prove-fixtures` wrote them). Keys load from where the page loads them, so set `VITE_ZOLANA_KEYS_URL` to the key CDN for shapes not staged under `public/keys`. `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per shape and run; `ZOLANA_TIMING_THREADS=4` sizes the runtime's thread pool as on a four-core laptop, and `ZOLANA_TIMING_CHROME_ARGS=--disable-features=WebGPU` times the CPU alone.
 
-## Runtime releases
+### GPU profile
 
-The accelerator is built by maintainers and published as a versioned GitHub release, with Rayon's thread helpers for bundlers: Mopro's template builds the helpers for pages without one, which start their threads from `blob:` URLs that extension pages refuse. `runtime.lock.json` pins the release manifest by SHA-256, and the manifest pins every file; `npm run build:prover` fetches and checks them into the package, beside the Go bridge and shim it builds from this repository. Proving keys are fetched from their immutable CloudFront prefix and checked against `wasm/prover/provingkeys/proving-keys.lock`.
+`examples/browser/scripts/gpu-profile.mjs` proves fixtures in headless Chrome with the runtime's profiling on and prints, per proof, each WebGPU kernel's time from timestamp queries (rounded to 0.1 ms by the browser) beside the host's stages: the witness solve, the sorts, the CPU's share of the G2 MSM and the waits. Run it after `npm run setup`; `ZOLANA_PROFILE_SHAPES`, `ZOLANA_PROFILE_THREADS` and `ZOLANA_PROFILE_ROUNDS` choose what it proves.
 
-To rebuild runtime assets manually, use the pinned Mopro checkout and the committed build script:
+## Runtime and keys
 
-```sh
-git clone https://github.com/sergeytimoshin/mopro.git /tmp/mopro
-git -C /tmp/mopro checkout d352504704d83c5a4a2eae9d42d7db9b4ab3f80e
-npm run build:runtime -- 0.3.2 /tmp/mopro
-```
+`runtime.lock.json` pins the zopro repository and revision the runtime is built from, with the Rust toolchain and the wasm-bindgen version. `scripts/build-runtime.sh` (`npm run build:runtime`, and the package build) builds zopro-zolana for the browser into the package's `src/runtime` with a manifest of every file's size and SHA-256, and keeps a runtime already built from the pins; the package ships it beside the compiled worker. The build uses Rayon's thread helpers for bundlers: zopro builds the helpers for pages without one, which start their threads from `blob:` URLs that extension pages refuse. A new runtime is a new pinned revision.
 
-Maintainers can run the `Runtime release` GitHub Actions workflow instead. After publishing a new runtime, update the version, release URL, size, and SHA-256 in `runtime.lock.json`; `ZOLANA_RUNTIME_BASE_URL` points the build at a local copy of the pinned release, as a `file://` directory.
+The keys are zopro keys: one file per circuit with the gnark proving key's points, the circuit's solver program, its input names and its verifying key, built offline from the gnark keys of the pinned key set with zopro's `tools/gnark/build-keys.sh`. `zopro-keys.lock` pins each file's size and SHA-256 beside the SHA-256 of the gnark key it was built from, which proofs report, and the CDN folder they are served from; the package's key digests and shape table are generated from it at build and test time, and `scripts/check-upstream.sh` checks it against the pinned zolana release (see [UPSTREAM.md](UPSTREAM.md)).
 
 ## Releasing the package
 
@@ -89,7 +85,7 @@ The `Publish` workflow runs the checks and the consumer gate, refuses a tag that
 
 ## SDK
 
-Install the package and import it: the app's bundler (Vite or webpack 5) emits the worker, the Go bridge and the accelerator from it, and proving keys load from the key CDN on first use. See the [package guide](packages/web-prover/README.md) for headers, extension pages, key hosting, integrity, error codes and lifecycle behavior. To serve keys yourself, `npx zolana-prover-keys --output public/keys --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key` installs the shapes you name, checked against the lockfile; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
+Install the package and import it: the app's bundler (Vite or webpack 5) emits the worker and the runtime from it, and proving keys load from the key CDN on first use. See the [package guide](packages/web-prover/README.md) for headers, extension pages, key hosting, integrity, error codes and lifecycle behavior. To serve keys yourself, `npx zolana-prover-keys --output public/keys --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key` installs the zopro key files of the shapes you name, checked against the lockfile; only one deserialized key is resident, but downloaded keys consume storage and proving requires additional working memory.
 
 ```ts
 import { ZolanaWebProver } from "@heliuslabs/zolana-web-prover";

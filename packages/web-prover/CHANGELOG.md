@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Proofs are made by zopro, a Rust Groth16 prover for gnark's circuits: one WebAssembly module, shipped in the package, that turns a `/prove` request into the circuit's witness, proves on a thread pool and on WebGPU where the browser has it, and verifies the proof before it returns it. A warm 2x2 proof takes 0.08 s at four threads on an Apple M5 Pro with WebGPU, 8x2 0.17 s and 24x2 0.43 s; on the CPU alone 0.28 s, 0.87 s and 2.6 s.
+
+Breaking
+
+- Proving needs cross-origin isolation and at least one thread (`threads`, by default the browser's processors up to 18).
+- Keys are zopro keys, `<name>.zopro`, each built from the pinned gnark key of the same name and checked against the size and SHA-256 bundled in the package from `zopro-keys.lock`; `zolana-prover-keys` installs the `.zopro` files, and a self-hosted `keyBaseUrl` serves them.
+
+Changed
+
+- After a shape's first load the Cache API keeps the runtime's raw form of the key (points decompressed, solver built) in place of the pinned file: 2x2 loads in 0.03 s instead of 1.5 s, 24x2 in 0.32 s instead of 17 s.
+- A proof made on the GPU that does not verify is proved again on the CPU, which proves that key from then on; `wasm_verify_failed` means a proof did not verify on the CPU either.
+- `wasm_key_digest_mismatch` also means a key file was built from another gnark key.
+
 ## 0.3.1-alpha — 2026-10-20
 
 - Published with npm provenance. No code changes.

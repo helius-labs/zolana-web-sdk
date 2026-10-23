@@ -1,16 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WorkerRequest } from "../src/wasm-prover.js";
 
-vi.mock("../src/vendor/wasm_exec.js", () => ({}));
-// A kernel whose Rayon threads never report ready, as when the page refuses their script.
-const kernel = vi.hoisted(() => ({
+// A runtime whose Rayon threads never report ready, as when the page refuses their script.
+const runtime = vi.hoisted(() => ({
   default: vi.fn(async () => {}),
   initThreadPool: vi.fn(() => new Promise<void>(() => {})),
-  Key: class {},
-  decompress_g1: () => {},
-  decompress_g2: () => {},
+  init_gpu: vi.fn(async () => {}),
+  raw_format: () => "raw-test",
+  ZolanaProver: class {},
 }));
-vi.mock("../src/runtime/accelerator/gnark_kernel.js", () => kernel);
+vi.mock("../src/runtime.js", () => ({ importRuntime: async () => runtime }));
 
 let scope: EventTarget & { postMessage: ReturnType<typeof vi.fn> };
 
@@ -27,11 +26,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("fails initialization when the kernel's thread pool never starts", async () => {
+it("fails initialization when the runtime's thread pool never starts", async () => {
   const init: WorkerRequest = { id: 1, kind: "init", threads: 2 };
   scope.dispatchEvent(new MessageEvent("message", { data: init }));
   await vi.advanceTimersByTimeAsync(29_999);
-  expect(kernel.initThreadPool).toHaveBeenCalledWith(2);
+  expect(runtime.initThreadPool).toHaveBeenCalledWith(2);
   expect(scope.postMessage).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1);
   expect(scope.postMessage).toHaveBeenCalledExactlyOnceWith({

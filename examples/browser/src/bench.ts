@@ -153,8 +153,7 @@ export function describeEnvironment(): Environment {
     platform: agent,
     runtime: typeof globalThis.WebAssembly === "object" ? "wasm-capable" : "no-wasm",
     ...(cores === undefined ? {} : { cores }),
-    // Go's js/wasm has no thread support, so a wasm proof is single-threaded
-    // regardless of how many cores the host reports.
-    threaded: false,
+    // The runtime proves on a thread pool when the page is cross-origin isolated.
+    threaded: globalThis.crossOriginIsolated === true,
   });
 }

@@ -64,8 +64,8 @@ try {
   );
   // The runtime ships in the package as built, beside the worker the app's bundler emits.
   for (const [packaged, source] of [
-    ["dist/runtime/zolana-prover.wasm", "packages/web-prover/src/runtime/zolana-prover.wasm"],
-    ["dist/runtime/accelerator/gnark_kernel_bg.wasm", "packages/web-prover/src/runtime/accelerator/gnark_kernel_bg.wasm"],
+    ["dist/runtime/zopro_zolana.js", "packages/web-prover/src/runtime/zopro_zolana.js"],
+    ["dist/runtime/zopro_zolana_bg.wasm", "packages/web-prover/src/runtime/zopro_zolana_bg.wasm"],
     ["dist/scripts/install-keys.mjs", "packages/web-prover/scripts/install-keys.mjs"],
   ]) {
     assert.deepEqual(await readFile(join(installed, packaged)), await readFile(join(root, source)), packaged);
@@ -77,14 +77,7 @@ try {
     consumer,
   );
   await mkdir(join(publicDirectory, "fixtures"), { recursive: true });
-  await copyFile(
-    join(root, "wasm/prover-wasm/testdata/transfer-2x2.json"),
-    join(publicDirectory, "fixtures/transfer-2x2.json"),
-  );
-  // The bare Go bridge, for main.ts's check that it redacts its own errors.
-  await mkdir(join(publicDirectory, "raw"), { recursive: true });
-  await copyFile(join(installed, "dist/runtime/zolana-prover.wasm"), join(publicDirectory, "raw/zolana-prover.wasm"));
-  await copyFile(join(installed, "dist/vendor/wasm_exec.js"), join(publicDirectory, "raw/wasm_exec.js"));
+  await copyFile(join(root, "fixtures/transfer-2x2.json"), join(publicDirectory, "fixtures/transfer-2x2.json"));
 
   const vite = await import(pathToFileURL(join(consumer, "node_modules/vite/dist/node/index.js")).href);
   await vite.build({ root: consumer, configFile: false, build: { target: "esnext" }, logLevel: "warn" });
@@ -107,18 +100,14 @@ try {
     join(consumer, "dist-webpack/index.html"),
     '<!doctype html><html><head><meta charset="utf-8"></head><body><script src="/main.js"></script></body></html>\n',
   );
-  // Both bundlers emit the Go bridge and the accelerator as files, not inlined.
-  const runtimeSizes = await Promise.all(
-    ["zolana-prover.wasm", "accelerator/gnark_kernel_bg.wasm"].map(
-      async (path) => (await readFile(join(installed, "dist/runtime", path))).length,
-    ),
-  );
+  // Both bundlers emit the runtime's wasm as a file, not inlined.
+  const runtimeSize = (await readFile(join(installed, "dist/runtime/zopro_zolana_bg.wasm"))).length;
   for (const outDir of ["dist", "dist-webpack"]) {
     const emitted = [];
     for (const file of await readdir(join(consumer, outDir), { recursive: true })) {
-      if (file.endsWith(".wasm") && !file.startsWith("raw")) emitted.push((await readFile(join(consumer, outDir, file))).length);
+      if (file.endsWith(".wasm")) emitted.push((await readFile(join(consumer, outDir, file))).length);
     }
-    assert.deepEqual(emitted.sort(), [...runtimeSizes].sort(), `${outDir} emits the runtime's wasm files`);
+    assert.deepEqual(emitted, [runtimeSize], `${outDir} emits the runtime's wasm file`);
   }
 
   const results = {};
@@ -170,7 +159,7 @@ try {
   results.extension = await check(await browser(extension), `chrome-extension://${extensionId}/index.html`);
 
   console.log(
-    "PASS: clean packed install with no asset step, strict NodeNext/bundler types, production proofs (Go + Arkworks) from Vite and webpack builds and from an MV3 extension page, raw Go errors/panics, witness error redaction and recovery.",
+    "PASS: clean packed install with no asset step, strict NodeNext/bundler types, production proofs at one and two threads from Vite and webpack builds and from an MV3 extension page, witness error redaction and recovery.",
   );
   console.log(JSON.stringify(results));
 } finally {
@@ -219,7 +208,7 @@ async function check(driver, url) {
   assert.equal(result.error, undefined, `${url}: ${result.error}`);
   assert.deepEqual(
     result.results.map(({ threads }) => threads),
-    [0, 2],
+    [1, 2],
     url,
   );
   const logs = await driver.manage().logs().get(logging.Type.BROWSER);

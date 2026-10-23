@@ -1,13 +1,13 @@
 /**
  * Proving keys in the browser's Cache API.
  *
- * Keys are 9-380 MB each and immutable (the lockfile pins their sha256 and the
- * CloudFront prefix is version-hashed), so re-downloading one per page load is
- * pure waste. A key downloads in ranged parts kept as they arrive, so an
- * interrupted download resumes where it stopped. After a shape's first load the
- * store keeps the bridge's raw re-encoding instead of the pinned file: the
- * pinned file's compressed points take about 240 ms per MB to decompress in
- * wasm on every load, and the raw form skips that.
+ * Keys are zopro key files of 7-315 MB each and immutable (the lockfile pins
+ * their sha256 and the CloudFront prefix is version-hashed), so re-downloading
+ * one per page load is pure waste. A key downloads in ranged parts kept as they
+ * arrive, so an interrupted download resumes where it stopped. After a shape's
+ * first load the store keeps the runtime's raw form instead of the pinned file:
+ * the pinned file's compressed points take seconds to decompress in wasm on
+ * every load, and the raw form skips that and the solver's build.
  */
 
 import { abortable, rethrowAbort } from "./abortable.js";
@@ -15,16 +15,21 @@ import { WasmProverError } from "./errors.js";
 import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "./key-digests.js";
 import { MERGE_SHAPES, TRANSFER_SHAPES, type ShapeKey } from "./shapes.js";
 
-/** One entry of `KEY_DIGESTS`, copied from `proving-keys.lock`. */
+/** One entry of `KEY_DIGESTS`, copied from `zopro-keys.lock`. */
 export interface KeyDigest {
+  /** The zopro key file, the object name under the key base URL. */
+  readonly file: string;
   readonly size: number;
   readonly sha256: string;
+  /** The gnark proving key the file was built from, which proofs report. */
+  readonly keySha256: string;
 }
 
 /** A proving key the prover can load and how much of it the browser keeps. */
 export interface ProvingKeyStatus {
+  /** The gnark proving key's name, as `ShapeKey.keyFile`. */
   readonly keyFile: string;
-  /** The key's size in the lockfile. */
+  /** The zopro key file's size in the lockfile. */
   readonly size: number;
   /**
    * Bytes the browser keeps: `size` once the key downloaded, what an interrupted
@@ -35,7 +40,7 @@ export interface ProvingKeyStatus {
   readonly decoded: boolean;
 }
 
-/** A key's bytes: the pinned file, or the raw form the bridge wrote at an earlier load. */
+/** A key's bytes: the pinned file, or the raw form the runtime wrote at an earlier load. */
 export type KeyBytes = Readonly<{
   bytes: ArrayBuffer;
   raw: boolean;
@@ -61,11 +66,12 @@ export class KeyStore {
     this.#options = options;
   }
 
+  /** The URL of the shape's zopro key file. */
   url(shape: ShapeKey): string {
-    return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${shape.keyFile}`;
+    return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${this.digest(shape).file}`;
   }
 
-  /** The shape's pinned size and sha256; a shape outside the key set has none. */
+  /** The shape's pinned key file, size and sha256; a shape outside the key set has none. */
   digest(shape: ShapeKey): KeyDigest {
     const expected = KEY_DIGESTS[shape.keyFile];
     if (expected === undefined) throw new WasmProverError("wasm_key_manifest_error");
@@ -105,7 +111,7 @@ export class KeyStore {
     await optionalCache(() => globalThis.caches?.delete(keyCacheName), signal);
   }
 
-  /** Whether the store keeps this shape's raw form, written by a bridge of `rawKeyFormat`. */
+  /** Whether the store keeps this shape's raw form, written by a runtime of `rawKeyFormat`. */
   async rawKept(shape: ShapeKey, rawKeyFormat: string, signal: AbortSignal): Promise<boolean> {
     const expected = KEY_DIGESTS[shape.keyFile];
     const cache = await this.#open(signal);
@@ -136,7 +142,7 @@ export class KeyStore {
     );
   }
 
-  /** The pinned file, after forgetting a raw form the bridge rejected. */
+  /** The pinned file, after forgetting a raw form the runtime rejected. */
   async reload(
     shape: ShapeKey,
     signal: AbortSignal,
@@ -196,8 +202,8 @@ export class KeyStore {
 
   /**
    * The raw re-encoding kept by an earlier load, if it was derived from this
-   * pinned key by a bridge writing the same format and has its full size. It is
-   * not hashed again on every load: a damaged entry fails the bridge's load and
+   * pinned key by a runtime writing the same format and has its full size. It is
+   * not hashed again on every load: a damaged entry fails the runtime's load and
    * is rebuilt from the pinned key, and a proof is verified before it returns.
    */
   async #cachedRaw(
@@ -219,7 +225,7 @@ export class KeyStore {
       const bytes = await optionalCache(() => hit.arrayBuffer(), signal);
       if (bytes?.byteLength === size) return { bytes, raw: true, source: "cache", cacheable: true };
     }
-    // Derived from another key set or by another bridge, or damaged.
+    // Derived from another key set or by another runtime, or damaged.
     await optionalCache(() => cache.delete(rawKeyUrl(url)), signal);
     return undefined;
   }

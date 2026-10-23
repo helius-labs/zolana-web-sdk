@@ -1,10 +1,10 @@
 {
-  "format": 1,
-  "version": "0.3.2",
-  "baseUrl": "https://github.com/helius-labs/zolana-web-sdk/releases/download/runtime-v0.3.2/",
-  "manifest": {
-    "asset": "runtime-manifest.json",
-    "size": 1760,
-    "sha256": "06526381366711dea7fc63b3ea937077494b311371deb12857e997991b25da55"
-  }
+  "format": 2,
+  "zopro": {
+    "repository": "https://github.com/helius-labs/zk-tools.git",
+    "path": "zopro",
+    "revision": "8664091d83aade63eff200acbaf06ec353e404e6"
+  },
+  "rustToolchain": "nightly-2025-11-15",
+  "wasmBindgen": "0.2.128"
 }

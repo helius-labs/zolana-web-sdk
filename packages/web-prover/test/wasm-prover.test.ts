@@ -27,7 +27,7 @@ describe("prover lifecycle", () => {
     const { prover } = await fixture();
     expect(prover).toBeInstanceOf(ZolanaWebProver);
     const result = await prover.proveRequest(body);
-    expect(result).toEqual({ proof: '{"proof":"test"}', proveMs: 1, verifyMs: 1 });
+    expect(result).toEqual({ proof: '{"proof":"test"}', proveMs: 1, verifyMs: 0 });
     expect(TestWorker.instances).toHaveLength(1);
     prover.terminate();
   });
@@ -45,7 +45,7 @@ describe("prover lifecycle", () => {
     prover.terminate();
   });
 
-  it("rejects a worker whose bridge reports no raw key format", async () => {
+  it("rejects a worker whose runtime reports no raw key format", async () => {
     const { prover } = await fixture();
     TestWorker.rawKeyFormat = undefined;
     await expect(prover.start(factory)).rejects.toMatchObject({ code: "wasm_invalid_response" });
@@ -66,7 +66,7 @@ describe("prover lifecycle", () => {
         expect(old.requests.filter((r) => r.kind === "prove")).toHaveLength(2),
       );
       if (kind === "error") old.crash();
-      else if (kind === "fatal") old.message({ fatal: true, error: "Go exited" });
+      else if (kind === "fatal") old.message({ fatal: true, error: "runtime exited" });
       else old.dispatchEvent(new Event("messageerror"));
       expect(await pending).toBeInstanceOf(Error);
       expect(await queued).toBeInstanceOf(Error);
@@ -207,7 +207,7 @@ describe("fetch cancellation", () => {
     prover.terminate();
   });
 
-  it.each(["loadKey", "prove", "verify"] as const)(
+  it.each(["loadKey", "prove"] as const)(
     "terminates active %s on Request cancellation and reloads after retry",
     async (kind) => {
       const { prover } = await fixture();
@@ -240,7 +240,7 @@ describe("fetch cancellation", () => {
     if (normalFetch === undefined) throw new Error("missing fetch implementation");
     let downloadSignal: AbortSignal | null | undefined;
     fetch.mockImplementation(async (input, init) => {
-      if (String(input).endsWith(".key")) {
+      if (String(input).endsWith(".zopro")) {
         downloadSignal = init?.signal;
         return download.promise;
       }
@@ -296,7 +296,7 @@ describe("fetch cancellation", () => {
 describe("witness privacy", () => {
   const sentinel = "review-private-sentinel";
 
-  it.each(["init", "loadKey", "prove", "verify"] as const)(
+  it.each(["init", "loadKey", "prove"] as const)(
     "redacts raw %s failures in the API, fetch adapter and measurements",
     async (kind) => {
       const measurements: Measurement[] = [];
@@ -404,7 +404,6 @@ describe("prefetch and key progress", () => {
       "loadKey",
       "loadKey",
       "prove",
-      "verify",
     ]);
     expect(loadedFiles()).toEqual([oneByTwo.keyFile, twoByTwo.keyFile]);
     prover.terminate();
@@ -432,6 +431,24 @@ describe("prefetch and key progress", () => {
       code: "wasm_key_digest_mismatch",
     });
     expect(loadedFiles()).toEqual([]);
+    prover.terminate();
+  });
+});
+
+describe("worker error codes", () => {
+  it("keeps a known worker code and replaces any other with the operation's", async () => {
+    const { prover } = await fixture();
+    const reply = TestWorker.prototype.reply;
+    let code = "wasm_key_digest_mismatch";
+    vi.spyOn(TestWorker.prototype, "reply").mockImplementation(function (this: TestWorker, request) {
+      if (request.kind === "loadKey") this.message({ id: request.id, ok: false, error: code, ms: 0 });
+      else reply.call(this, request);
+    });
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_key_digest_mismatch" });
+    code = "wasm_prover_error";
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_key_load_failed" });
+    code = "toString";
+    await expect(prover.proveRequest(body)).rejects.toMatchObject({ code: "wasm_key_load_failed" });
     prover.terminate();
   });
 });

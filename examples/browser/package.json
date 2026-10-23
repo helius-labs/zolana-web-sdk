@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Focused browser demo for local Zolana proving with Go and threaded Arkworks engines.",
+  "description": "Browser benchmark for local Zolana proving with zopro.",
   "scripts": {
     "keys": "node ../../packages/web-prover/dist/scripts/install-keys.mjs --output public/keys --keys transfer_confidential_2_2.key",
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:browser": "node scripts/test-mopro-browser.mjs",
+    "test:browser": "node scripts/test-browser.mjs",
     "test": "vitest run"
   },
   "dependencies": {

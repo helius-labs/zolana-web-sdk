@@ -12,7 +12,7 @@ const messages = {
   wasm_key_digest_mismatch: "Proving key does not match the lockfile; stage the pinned assets",
   wasm_key_load_failed: "Proving-key loading failed",
   wasm_prove_failed: "Proof generation failed",
-  wasm_verify_failed: "Native gnark verification rejected the proof",
+  wasm_verify_failed: "The proof did not verify",
 } as const;
 
 export type WasmProverErrorCode = keyof typeof messages;
@@ -36,9 +36,18 @@ export function operationError(kind: string): WasmProverError {
       return new WasmProverError("wasm_key_load_failed");
     case "prove":
       return new WasmProverError("wasm_prove_failed");
-    case "verify":
-      return new WasmProverError("wasm_verify_failed");
     default:
       return new WasmProverError("wasm_worker_failed");
   }
+}
+
+/**
+ * The error of a failed worker operation: the worker's code when it is one of
+ * ours (a key built from another gnark key, a proof that did not verify), else
+ * the operation's. The worker sends codes only, never messages.
+ */
+export function workerError(kind: string, code: unknown): WasmProverError {
+  return typeof code === "string" && code !== "wasm_prover_error" && Object.hasOwn(messages, code)
+    ? new WasmProverError(code as WasmProverErrorCode)
+    : operationError(kind);
 }

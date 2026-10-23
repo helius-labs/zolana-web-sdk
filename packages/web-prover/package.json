@@ -24,8 +24,8 @@
   },
   "scripts": {
     "generate:keys": "node scripts/generate-key-digests.ts",
-    "build": "rm -rf dist && ../../scripts/build-wasm.sh && node ../../scripts/fetch-runtime.mjs && npm run generate:keys && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
-    "types": "node ../../scripts/fetch-runtime.mjs && npm run generate:keys && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "rm -rf dist && ../../scripts/build-runtime.sh && npm run generate:keys && tsc -p tsconfig.build.json && node ../../scripts/prepare-prover-package.mjs",
+    "types": "../../scripts/build-runtime.sh && npm run generate:keys && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "pretypecheck": "npm run generate:keys",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run generate:keys",

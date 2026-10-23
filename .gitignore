@@ -1,11 +1,11 @@
 node_modules/
 dist/
 target/
-packages/web-prover/src/vendor/
 packages/web-prover/src/runtime/
 packages/web-prover/src/key-digests.ts
 examples/browser/public/keys/
 examples/browser/public/fixtures/
 *.key
+*.zopro
 *.wasm
 .DS_Store

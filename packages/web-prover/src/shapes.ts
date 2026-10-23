@@ -2,7 +2,7 @@
  * The transfer and merge circuit shapes and the proving keys that back them.
  *
  * The shapes are the keys of the pinned key set, read from `key-digests.ts`
- * (generated from `proving-keys.lock`, which a downloaded key is also checked
+ * (generated from `zopro-keys.lock`, which a downloaded key is also checked
  * against), smallest key first, so the order doubles as the smallest-fit
  * search order; the set mirrors `SPP_SUPPORTED_SHAPES` in the SDK and the
  * on-chain verifier.
@@ -18,9 +18,9 @@ export interface Shape {
 export interface ShapeKey extends Shape {
   /** `<in>x<out>`, the label used in the UI and benchmark tables. */
   readonly label: string;
-  /** Proving-key file name, matching the CloudFront/S3 object name. */
+  /** The gnark proving key's file name, which names the circuit and its zopro key. */
   readonly keyFile: string;
-  /** Proving-key size in bytes, from the pinned lockfile. */
+  /** The zopro key file's size in bytes, from the pinned lockfile. */
   readonly keyBytes: number;
 }
 

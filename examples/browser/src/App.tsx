@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { automaticProvingThreads, WasmProver } from "@heliuslabs/zolana-web-prover";
 
 type Mode = "proof" | "benchmark";
-type ThreadMode = "auto" | "custom" | "go";
+type ThreadMode = "auto" | "custom";
 type Phase = "loading" | "idle" | "starting" | "preparing" | "proving";
 type ProofResult = Awaited<ReturnType<WasmProver["proveRequest"]>>;
 
@@ -34,8 +34,7 @@ export function App(): React.ReactElement {
     Number.isInteger(Number(customThreads)) &&
     Number(customThreads) >= 1 &&
     Number(customThreads) <= 64;
-  const threads =
-    threadMode === "go" ? 0 : threadMode === "auto" ? automaticThreads : Number(customThreads);
+  const threads = threadMode === "auto" ? automaticThreads : Number(customThreads);
   const busy = phase !== "idle" && phase !== "loading";
   const latest = results.at(-1);
   const provingMs = results.length ? median(results.map((result) => result.proveMs)) : undefined;
@@ -98,9 +97,9 @@ export function App(): React.ReactElement {
           "The proof input isn't valid JSON. Check it in Options or restore the sample.",
         );
       }
-      if (threads > 0 && !globalThis.crossOriginIsolated) {
+      if (!globalThis.crossOriginIsolated) {
         throw new Error(
-          "Parallel proving isn't available in this browser. Choose Go baseline in Options.",
+          "Proving needs a cross-origin isolated page, which this browser did not give.",
         );
       }
       let instance = runtime.current;
@@ -313,7 +312,6 @@ export function App(): React.ReactElement {
               >
                 <option value="auto">Automatic</option>
                 <option value="custom">Custom threads</option>
-                <option value="go">Go baseline</option>
               </select>
             </label>
             {threadMode === "custom" && (
@@ -404,7 +402,7 @@ export function App(): React.ReactElement {
             </div>
             <div>
               <dt>Engine</dt>
-              <dd>{activeThreads === 0 ? "Go" : `Arkworks · ${activeThreads} threads`}</dd>
+              <dd>{`zopro · ${String(activeThreads)} threads`}</dd>
             </div>
           </dl>
           <pre className="proof-json">

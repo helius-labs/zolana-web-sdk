@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Installs pinned proving keys for an app that serves them itself; each key is
-// checked against the size and SHA-256 the package bundles from the
-// proving-keys lockfile. Runs from the package's dist/scripts, beside key-digests.js.
+// Installs pinned proving keys for an app that serves them itself: the zopro key
+// file of each named key, checked against the size and SHA-256 the package
+// bundles from zopro-keys.lock. Runs from the package's dist/scripts, beside key-digests.js.
 import { join, relative, resolve } from "node:path";
 import { existingFileMatches, loadAsset, verifyBytes, writeAtomically } from "./assets.mjs";
 import { KEY_BASE_URL, KEY_DIGESTS } from "../key-digests.js";
@@ -34,13 +34,13 @@ const shown = (path) => relative(process.cwd(), path) || ".";
 
 for (const name of selectedKeys) {
   const entry = KEY_DIGESTS[name];
-  const destination = join(output, name);
+  const destination = join(output, entry.file);
   if (await existingFileMatches(destination, entry)) {
     console.log(`Using ${shown(destination)}`);
     continue;
   }
-  const bytes = await loadAsset(baseUrl, name);
-  verifyBytes(name, bytes, entry);
+  const bytes = await loadAsset(baseUrl, entry.file);
+  verifyBytes(entry.file, bytes, entry);
   await writeAtomically(destination, bytes);
   console.log(`Installed ${shown(destination)}`);
 }

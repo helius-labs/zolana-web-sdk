@@ -10,7 +10,7 @@
 // laptop on a bigger machine).
 //
 // A shape is `<inputs>x<outputs>` for a confidential transfer or
-// `merge-<inputs>x1` for a merge, its request in wasm/prover-wasm/testdata.
+// `merge-<inputs>x1` for a merge, its request in fixtures/.
 // Without ZOLANA_TIMING_SHAPES every shape runs; shapes over eight notes run
 // two rounds, a first and a warm one. A shape that fails prints an `error`
 // line, the others still run, and the harness exits with 1.
@@ -27,7 +27,7 @@
 // public/keys. ZOLANA_TIMING_BUILT=1 serves the built page (`npm run
 // build:example`, in dist/), as CI does, instead of the Vite dev server;
 // DEMO_URL points at a running page. CHROME_BIN and CHROME_NO_SANDBOX work
-// as in the browser test.
+// as in the browser test; ZOLANA_TIMING_CHROME_ARGS adds Chrome switches.
 import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { cpus, totalmem } from "node:os";
 import { join } from "node:path";
@@ -38,7 +38,7 @@ import { createServer, preview } from "vite";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const lock = JSON.parse(
-  readFileSync(new URL("../../../wasm/prover/provingkeys/proving-keys.lock", import.meta.url), "utf8"),
+  readFileSync(new URL("../../../zopro-keys.lock", import.meta.url), "utf8"),
 );
 const shapes = (process.env.ZOLANA_TIMING_SHAPES || "1x2,2x2,4x2,8x2,16x2,24x2,merge-24x1").split(",");
 const rounds = Number(process.env.ZOLANA_TIMING_ROUNDS || 4);
@@ -67,6 +67,9 @@ async function serve() {
 const server = await serve();
 const demoUrl = process.env.DEMO_URL || server.resolvedUrls.local[0];
 const options = new chrome.Options().addArguments("--headless", "--window-size=1440,1100");
+// ZOLANA_TIMING_CHROME_ARGS adds switches, e.g. --disable-features=WebGPU to
+// time the kernel's CPU path where the GPU path is the default.
+for (const arg of (process.env.ZOLANA_TIMING_CHROME_ARGS ?? "").split(" ").filter(Boolean)) options.addArguments(arg);
 if (process.env.CHROME_BIN) options.setChromeBinaryPath(process.env.CHROME_BIN);
 if (process.env.CHROME_NO_SANDBOX === "1") options.addArguments("--no-sandbox");
 let driver;
@@ -184,7 +187,7 @@ let failed = false;
 try {
   await open();
   for (const shape of shapes) {
-    const json = readFileSync(`${root}../../wasm/prover-wasm/testdata/${requestOf(shape)}`, "utf8");
+    const json = readFileSync(`${root}../../fixtures/${requestOf(shape)}`, "utf8");
     const keyBytes = lock.keys[keyOf(shape)]?.size ?? 0;
     let run = "fresh";
     try {

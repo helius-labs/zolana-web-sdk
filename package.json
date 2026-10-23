@@ -15,17 +15,15 @@
     "types": "npm run types --workspace @heliuslabs/zolana-web-prover",
     "typecheck": "npm run types && npm run typecheck --workspace @heliuslabs/zolana-web-prover && npm run typecheck --workspace @zolana/browser-example && npm run typecheck --workspace @zolana/wallet-example",
     "test": "npm run test --workspace @heliuslabs/zolana-web-prover && npm run test --workspace @zolana/browser-example && node --test scripts/*.test.mjs packages/web-prover/scripts/*.test.mjs",
-    "test:go": "cd wasm && go test ./...",
     "test:browser": "npm run test:browser --workspace @zolana/browser-example",
     "test:consumer": "node scripts/test-packed-consumer.mjs",
     "test:devnet": "npm run test:devnet --workspace @zolana/wallet-example",
-    "check": "npm run test && npm run test:go && npm run build && npm pack --dry-run --workspace @heliuslabs/zolana-web-prover",
+    "check": "npm run test && npm run build && npm pack --dry-run --workspace @heliuslabs/zolana-web-prover",
     "check:full": "npm run check && npm run test:browser && npm run test:consumer",
     "dev": "npm run dev --workspace @zolana/browser-example",
     "dev:wallet": "npm run dev --workspace @zolana/wallet-example",
     "setup": "npm run build:prover && npm run keys --workspace @zolana/browser-example",
-    "build:wasm": "./scripts/build-wasm.sh",
-    "build:runtime": "./scripts/build-runtime-release.sh"
+    "build:runtime": "./scripts/build-runtime.sh"
   },
   "devDependencies": {
     "@puppeteer/browsers": "^3.2.5",

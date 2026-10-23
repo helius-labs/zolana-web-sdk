@@ -44,7 +44,7 @@ npm run build:prover
 VITE_SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<key>" npm run dev --workspace @zolana/wallet-example
 ```
 
-Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. Vite emits the prover's worker, Go bridge and accelerator from the package; proving keys load on first use from the Zolana key CDN, checked against the digests bundled in the prover, and the page prefetches the 1x2 and 2x2 keys once it connects. The page must be served with the cross-origin isolation headers in `vite.config.ts` for threaded proving.
+Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. Vite emits the prover's worker and runtime from the package; proving keys load on first use from the Zolana key CDN, checked against the digests bundled in the prover, and the page prefetches the 1x2 and 2x2 keys once it connects. The page must be served with the cross-origin isolation headers in `vite.config.ts`, without which the prover does not start.
 
 Without `VITE_SOLANA_RPC_URL` the page uses the public devnet RPC, which rate-limits confirmations. `VITE_INDEXER_URL` and `VITE_PROVER_URL` default to the devnet services; only the prover's non-proving routes are ever called.
 

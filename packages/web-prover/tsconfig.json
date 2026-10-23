@@ -14,8 +14,6 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    // The vendored wasm_exec.js is plain JS imported for its side effect.
-    "allowJs": true,
     // Node runs scripts/*.ts directly, so they import each other with extensions.
     "allowImportingTsExtensions": true,
     "noEmit": true

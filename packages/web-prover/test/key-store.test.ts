@@ -16,13 +16,15 @@ vi.mock("../src/key-digests.js", async (importOriginal) => {
   const digest = { size: key.length, sha256: createHash("sha256").update(key).digest("hex") };
   return {
     ...original,
-    KEY_DIGESTS: Object.fromEntries(Object.keys(original.KEY_DIGESTS).map((name) => [name, digest])),
+    KEY_DIGESTS: Object.fromEntries(
+      Object.entries(original.KEY_DIGESTS).map(([name, entry]) => [name, { ...entry, ...digest }]),
+    ),
   };
 });
 
 const part = 8 << 20;
 const body = JSON.stringify({ circuitType: "transfer-confidential", nInputs: 2, nOutputs: 2 });
-const pinnedUrl = "/keys/transfer_confidential_2_2.key";
+const pinnedUrl = "/keys/transfer_confidential_2_2.zopro";
 const rawUrl = `${pinnedUrl}?zolana-key=raw`;
 const partUrl = (index: number) => `${pinnedUrl}?zolana-key=part-${String(index)}`;
 const range = (start: number, end: number) => `bytes=${String(start)}-${String(end - 1)}`;

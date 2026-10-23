@@ -1,14 +1,16 @@
-// Writes src/key-digests.ts from the pinned proving-keys lockfile and the Go
-// downloader's default key host; the package build and tests run it first.
+// Writes src/key-digests.ts from the pinned zopro-keys.lock; the package build
+// and tests run it first.
 import { readFile, writeFile } from "node:fs/promises";
 
+/** One zopro key file and the gnark proving key it was built from. */
 interface LockEntry {
+  readonly file: string;
   readonly size: number;
   readonly sha256: string;
+  readonly key_sha256: string;
 }
 
-const lockUrl = new URL("../../../wasm/prover/provingkeys/proving-keys.lock", import.meta.url);
-const downloaderUrl = new URL("../../../wasm/prover/common/key_downloader.go", import.meta.url);
+const lockUrl = new URL("../../../zopro-keys.lock", import.meta.url);
 const outputUrl = new URL("../src/key-digests.ts", import.meta.url);
 
 /** The keys the browser prover loads: confidential transfers and merges. */
@@ -16,16 +18,20 @@ const browserKey = /^(transfer_confidential_\d+_\d+|merge_\d+_1)\.key$/u;
 
 const lock = JSON.parse(await readFile(lockUrl, "utf8")) as {
   readonly prefix: string;
+  readonly baseUrl: string;
   readonly keys: Record<string, LockEntry>;
 };
 const keySet = lock.prefix.split("/").at(-1);
 if (keySet === undefined || !/^[0-9a-f]+$/u.test(keySet)) throw new Error("Unexpected lock prefix");
-const host = /defaultProvingKeysBaseURL = "(https:\/\/[^"]+)"/u.exec(await readFile(downloaderUrl, "utf8"))?.[1];
-if (host === undefined) throw new Error("key_downloader.go names no default key host");
+if (!lock.baseUrl.startsWith("https://") || !lock.baseUrl.endsWith(`/${lock.prefix}/`))
+  throw new Error("zopro-keys.lock baseUrl does not name the lock's key set");
 const entries = Object.entries(lock.keys)
   .filter(([name]) => browserKey.test(name))
   .sort(([a], [b]) => a.localeCompare(b))
-  .map(([name, { size, sha256 }]) => `    "${name}": { size: ${String(size)}, sha256: "${sha256}" },`);
+  .map(
+    ([name, { file, size, sha256, key_sha256 }]) =>
+      `  "${name}": {\n    file: "${file}",\n    size: ${String(size)},\n    sha256: "${sha256}",\n    keySha256: "${key_sha256}",\n  },`,
+  );
 
 await writeFile(
   outputUrl,
@@ -35,13 +41,18 @@ await writeFile(
 export const KEY_SET = "${keySet}";
 
 /** Where the pinned key set is served from; the default \`keyBaseUrl\`. */
-export const KEY_BASE_URL = "${host.replace(/\/+$/u, "")}/${lock.prefix}/";
+export const KEY_BASE_URL = "${lock.baseUrl}";
 
-/** Size and sha256 of every proving key the browser prover can load. */
-export const KEY_DIGESTS: Readonly<Record<string, Readonly<{ size: number; sha256: string }>>> =
-  Object.freeze({
+/**
+ * Every proving key the browser prover can load, by the gnark key's name: its
+ * zopro key file, that file's size and sha256, and the sha256 of the gnark key
+ * it was built from, which proofs report.
+ */
+export const KEY_DIGESTS: Readonly<
+  Record<string, Readonly<{ file: string; size: number; sha256: string; keySha256: string }>>
+> = Object.freeze({
 ${entries.join("\n")}
-  });
+});
 `,
 );
 console.log(`Wrote ${String(entries.length)} key digests to src/key-digests.ts`);

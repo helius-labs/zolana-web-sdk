@@ -14,6 +14,7 @@ import {
   rawKey,
   request,
 } from "./support/prover.js";
+import { gnarkKeySha256 } from "./support/digests.js";
 
 vi.mock("../src/key-digests.js", async (importOriginal) =>
   (await import("./support/digests.js")).threeByteKeyDigests(importOriginal),
@@ -55,7 +56,7 @@ describe("best-effort proving-key cache", () => {
         );
       } else cache[operation].mockRejectedValue(error);
       await expect(prover.proveRequest(body)).resolves.toHaveProperty("proof");
-      expect(fetch.mock.calls.filter(([input]) => String(input).endsWith(".key"))).toHaveLength(1);
+      expect(fetch.mock.calls.filter(([input]) => String(input).endsWith(".zopro"))).toHaveLength(1);
       expect(
         new Uint8Array(
           (request(current(), "loadKey") as Extract<WorkerRequest, { kind: "loadKey" }>).key,
@@ -102,13 +103,13 @@ describe("best-effort proving-key cache", () => {
   it("uses a validated cache hit without downloading the key", async () => {
     const { prover, fetch } = await fixture();
     const { cache } = cacheFixture();
-    const pinnedUrl = "/keys/transfer_confidential_2_2.key";
+    const pinnedUrl = "/keys/transfer_confidential_2_2.zopro";
     cache.match.mockImplementation(async (url) =>
       url === pinnedUrl ? new Response(key) : undefined,
     );
     await prover.proveRequest(body);
     expect(fetch).not.toHaveBeenCalled();
-    // The bridge's raw form then takes the pinned file's place.
+    // The runtime's raw form then takes the pinned file's place.
     expect(cache.put).toHaveBeenCalledExactlyOnceWith(
       `${pinnedUrl}?zolana-key=raw`,
       expect.any(Response),
@@ -123,7 +124,7 @@ describe("best-effort proving-key cache", () => {
     cache.delete.mockRejectedValue(new DOMException("denied", "SecurityError"));
     const normal = fetch.getMockImplementation()!;
     fetch.mockImplementation((input, init) =>
-      String(input).endsWith(".key")
+      String(input).endsWith(".zopro")
         ? Promise.resolve(new Response(new Uint8Array([4, 5, 6])))
         : normal(input, init),
     );
@@ -150,7 +151,7 @@ describe("best-effort proving-key cache", () => {
 });
 
 describe("raw proving-key cache", () => {
-  const pinnedUrl = "/keys/transfer_confidential_2_2.key";
+  const pinnedUrl = "/keys/transfer_confidential_2_2.zopro";
   const rawUrl = `${pinnedUrl}?zolana-key=raw`;
 
   function memoryCache() {
@@ -176,14 +177,14 @@ describe("raw proving-key cache", () => {
     return found as Extract<WorkerRequest, { kind: "loadKey" }>;
   }
   const keyDownloads = (fetch: ReturnType<typeof vi.fn>) =>
-    fetch.mock.calls.filter(([input]) => String(input).endsWith(".key")).length;
+    fetch.mock.calls.filter(([input]) => String(input).endsWith(".zopro")).length;
 
-  it("keeps the bridge's raw key in place of the pinned file and loads it next time", async () => {
+  it("keeps the runtime's raw key in place of the pinned file and loads it next time", async () => {
     const cache = memoryCache();
     const first = await fixture();
     await first.prover.proveRequest(body);
     const pinned = loadKeyRequest();
-    expect(pinned).toMatchObject({ sha256: await hex(key), exportRaw: true });
+    expect(pinned).toMatchObject({ keySha256: gnarkKeySha256, exportRaw: true });
     expect(new Uint8Array(pinned.key)).toEqual(key);
     expect([...cache.entries.keys()]).toEqual([rawUrl]);
     const stored = cache.entries.get(rawUrl)!;
@@ -197,7 +198,7 @@ describe("raw proving-key cache", () => {
     await second.prover.proveRequest(body);
     expect(keyDownloads(second.fetch)).toBe(0);
     const raw = loadKeyRequest();
-    expect(raw).toMatchObject({ sha256: await hex(key), exportRaw: false });
+    expect(raw).toMatchObject({ keySha256: gnarkKeySha256, exportRaw: false });
     expect(new Uint8Array(raw.key)).toEqual(rawKey);
     expect(steps.find((step) => step.step === "key-fetch")?.note).toContain("raw-key cache");
     second.prover.terminate();
@@ -230,7 +231,7 @@ describe("raw proving-key cache", () => {
     },
   );
 
-  it("falls back to the pinned key when the bridge rejects a cached raw key", async () => {
+  it("falls back to the pinned key when the runtime rejects a cached raw key", async () => {
     const cache = memoryCache();
     const seed = await fixture();
     await seed.prover.proveRequest(body);
@@ -318,7 +319,7 @@ describe("key source", () => {
     });
     await prover.proveRequest(body);
     expect(fetch.mock.calls.map(([input]) => String(input))).toEqual([
-      `${KEY_BASE_URL}transfer_confidential_2_2.key`,
+      `${KEY_BASE_URL}transfer_confidential_2_2.zopro`,
     ]);
     expect(KEY_BASE_URL).toMatch(/^https:\/\/.+\/3a1c88f90f609eb1\/$/u);
     prover.terminate();

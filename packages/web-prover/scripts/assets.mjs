@@ -1,5 +1,5 @@
-// Fetching and checking pinned files, shared by the runtime fetch at build time
-// and the keys command an app runs; both ship with the package.
+// Fetching and checking pinned files for the keys command an app runs; both
+// ship with the package.
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
