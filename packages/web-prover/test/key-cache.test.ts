@@ -114,7 +114,7 @@ describe("best-effort proving-key cache", () => {
       `${pinnedUrl}?zolana-key=raw`,
       expect.any(Response),
     );
-    expect(cache.delete).toHaveBeenCalledExactlyOnceWith(pinnedUrl);
+    expect(cache.delete.mock.calls).toEqual([[pinnedUrl], [`${pinnedUrl}?zolana-key=part-0`]]);
     prover.terminate();
   });
 

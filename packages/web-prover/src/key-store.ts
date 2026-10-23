@@ -3,11 +3,12 @@
  *
  * Keys are zopro key files of 7-315 MB each and immutable (the lockfile pins
  * their sha256 and the CloudFront prefix is version-hashed), so re-downloading
- * one per page load is pure waste. A key downloads in ranged parts kept as they
- * arrive, so an interrupted download resumes where it stopped. After a shape's
- * first load the store keeps the runtime's raw form instead of the pinned file:
- * the pinned file's compressed points take seconds to decompress in wasm on
- * every load, and the raw form skips that and the solver's build.
+ * one per page load is pure waste. A key downloads in ranged parts, several at
+ * a time, each kept as it arrives, so an interrupted download resumes with the
+ * parts it lacks. After a shape's first load the store keeps the runtime's raw
+ * form instead of the pinned file's parts: the pinned file's compressed points
+ * take seconds to decompress in wasm on every load, and the raw form skips that
+ * and the solver's build.
  */
 
 import { abortable, rethrowAbort } from "./abortable.js";
@@ -96,10 +97,7 @@ export class KeyStore {
       } else if ((await optionalCache(() => cache.match(url), signal)) !== undefined) {
         status.downloaded = expected.size;
       } else {
-        status.downloaded = Math.min(
-          (await keptParts(cache, url, expected.size, signal)) * keyPartBytes,
-          expected.size,
-        );
+        status.downloaded = await keptBytes(cache, url, expected.size, signal);
       }
     }
     return statuses;
@@ -155,7 +153,7 @@ export class KeyStore {
     return this.#pinned(cache, url, expected, signal, downloaded);
   }
 
-  /** Keeps the raw form in place of the pinned file, which is no longer read. */
+  /** Keeps the raw form in place of the pinned file and its parts, which are no longer read. */
   async keepRaw(
     shape: ShapeKey,
     rawKeyFormat: string,
@@ -176,7 +174,9 @@ export class KeyStore {
       await cache.put(rawKeyUrl(url), new Response(raw, { headers }));
       return true;
     }, signal);
-    if (stored === true) await optionalCache(() => cache.delete(url), signal);
+    if (stored !== true) return;
+    await optionalCache(() => cache.delete(url), signal);
+    await deleteParts(cache, url, expected.size, signal);
   }
 
   /**
@@ -250,24 +250,27 @@ export class KeyStore {
       }
     }
 
-    let { bytes, resumed } =
-      cache === undefined
-        ? { bytes: await this.#download(url, expected.size, signal, downloaded), resumed: false }
-        : await this.#downloadInParts(cache, url, expected.size, signal, downloaded);
-    if (cache !== undefined && resumed && !(await abortable(matchesDigest(bytes, expected), signal))) {
+    if (cache === undefined) {
+      const bytes = await this.#download(url, expected.size, signal, downloaded);
+      if (!(await abortable(matchesDigest(bytes, expected), signal)))
+        throw new WasmProverError("wasm_key_digest_mismatch");
+      return { bytes, raw: false, source: "network", cacheable };
+    }
+    let parts = await this.#downloadInParts(cache, url, expected.size, signal, downloaded);
+    let valid = await abortable(matchesDigest(parts.bytes, expected), signal);
+    if (!valid && parts.resumed) {
       // A part an earlier download left was stale or damaged: start over once.
       await deleteParts(cache, url, expected.size, signal);
-      ({ bytes } = await this.#downloadInParts(cache, url, expected.size, signal, downloaded, false));
+      parts = await this.#downloadInParts(cache, url, expected.size, signal, downloaded, false);
+      valid = await abortable(matchesDigest(parts.bytes, expected), signal);
     }
-    if (!(await abortable(matchesDigest(bytes, expected), signal))) {
-      if (cache !== undefined) await deleteParts(cache, url, expected.size, signal);
+    if (!valid) {
+      await deleteParts(cache, url, expected.size, signal);
       throw new WasmProverError("wasm_key_digest_mismatch");
     }
-    if (cache !== undefined) {
-      await optionalCache(() => cache.put(url, new Response(bytes.slice(0))), signal);
-      await deleteParts(cache, url, expected.size, signal);
-    }
-    return { bytes, raw: false, source: "network", cacheable };
+    // The parts are the kept file; a key a host sent whole is kept whole.
+    if (parts.whole) await optionalCache(() => cache.put(url, new Response(parts.bytes.slice(0))), signal);
+    return { bytes: parts.bytes, raw: false, source: parts.fetched ? "network" : "cache", cacheable };
   }
 
   async #download(
@@ -283,9 +286,12 @@ export class KeyStore {
 
   /**
    * Downloads a key in ranged parts, each kept in the cache as it arrives, so an
-   * interrupted download resumes where it stopped. A host that ignores ranges
-   * answers with the whole key, which is taken instead. `resumed` says whether
-   * parts an earlier download left were used; `resume: false` ignores them.
+   * interrupted download resumes with the parts it lacks. The first part
+   * missing goes alone: a host that ignores ranges answers it with the whole
+   * key, which is taken instead (`whole`). The others go `keyPartsAtOnce` at a
+   * time. `resumed` says whether parts an earlier download left were used,
+   * `fetched` whether any part came from the network; `resume: false` ignores
+   * kept parts.
    */
   async #downloadInParts(
     cache: Cache,
@@ -294,51 +300,79 @@ export class KeyStore {
     signal: AbortSignal,
     downloaded?: (loaded: number) => void,
     resume = true,
-  ): Promise<Readonly<{ bytes: ArrayBuffer; resumed: boolean }>> {
+  ): Promise<Readonly<{ bytes: ArrayBuffer; resumed: boolean; fetched: boolean; whole: boolean }>> {
     const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (let index = 0; resume && offset < size; index++) {
-      const length = Math.min(keyPartBytes, size - offset);
-      const hit = await optionalCache(() => cache.match(partUrl(url, index)), signal);
+    const missing: number[] = [];
+    let received = 0;
+    for (let index = 0; index * keyPartBytes < size; index++) {
+      const start = index * keyPartBytes;
+      const length = Math.min(keyPartBytes, size - start);
+      const hit = resume ? await optionalCache(() => cache.match(partUrl(url, index)), signal) : undefined;
       const kept = hit === undefined ? undefined : await optionalCache(() => hit.arrayBuffer(), signal);
-      if (kept?.byteLength !== length) break;
-      bytes.set(new Uint8Array(kept), offset);
-      offset += length;
+      if (kept?.byteLength === length) {
+        bytes.set(new Uint8Array(kept), start);
+        received += length;
+      } else missing.push(index);
     }
-    const resumed = offset > 0;
-    if (resumed) downloaded?.(offset);
-    while (offset < size) {
-      const end = Math.min(offset + keyPartBytes, size);
+    const resumed = received > 0;
+    if (resumed) downloaded?.(received);
+    const fetched = missing.length > 0;
+
+    // Part `index`, kept; or the whole key, when the host ignored the range.
+    const fetchPart = async (index: number): Promise<ArrayBuffer | undefined> => {
+      const start = index * keyPartBytes;
+      const end = Math.min(start + keyPartBytes, size);
       const response = await abortable(
         this.#options.fetch(url, {
           signal,
-          headers: { range: `bytes=${String(offset)}-${String(end - 1)}` },
+          headers: { range: `bytes=${String(start)}-${String(end - 1)}` },
         }),
         signal,
       );
       if (response.status !== 200 && response.status !== 206) {
         throw new WasmProverError("wasm_key_download_failed");
       }
+      let reported = 0;
+      const part = await abortable(
+        readKey(response, size, (loaded) => {
+          received += loaded - reported;
+          reported = loaded;
+          downloaded?.(Math.min(received, size));
+        }),
+        signal,
+      );
       // Told apart by length, not status: a host without ranges answers 200 with the
       // whole key, and an extension's own files answer 200 with just the range.
-      const start = offset;
-      const part = await abortable(
-        readKey(response, size, (loaded) => downloaded?.(Math.min(start + loaded, size))),
-        signal,
-      );
-      if (response.status === 200 && part.byteLength === size) {
-        await deleteParts(cache, url, size, signal);
-        return { bytes: part, resumed: false };
-      }
+      if (response.status === 200 && part.byteLength === size) return part;
       if (part.byteLength !== end - start) throw new WasmProverError("wasm_key_download_failed");
       bytes.set(new Uint8Array(part), start);
-      await optionalCache(
-        () => cache.put(partUrl(url, start / keyPartBytes), new Response(part)),
-        signal,
-      );
-      offset = end;
+      await optionalCache(() => cache.put(partUrl(url, index), new Response(part)), signal);
+      return undefined;
+    };
+
+    const first = missing.shift();
+    if (first !== undefined) {
+      const whole = await fetchPart(first);
+      if (whole !== undefined) {
+        await deleteParts(cache, url, size, signal);
+        return { bytes: whole, resumed: false, fetched, whole: true };
+      }
     }
-    return { bytes: bytes.buffer, resumed };
+    // A failed part keeps the others from starting; those under way finish and
+    // are kept for the next attempt.
+    let failure: Readonly<{ error: unknown }> | undefined;
+    const fetchMissing = async () => {
+      for (let index = missing.shift(); index !== undefined && failure === undefined; index = missing.shift()) {
+        try {
+          if ((await fetchPart(index)) !== undefined) throw new WasmProverError("wasm_key_download_failed");
+        } catch (error) {
+          failure ??= { error };
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(keyPartsAtOnce, missing.length) }, fetchMissing));
+    if (failure !== undefined) throw failure.error;
+    return { bytes: bytes.buffer, resumed, fetched, whole: false };
   }
 }
 
@@ -353,6 +387,12 @@ const rawSizeHeader = "x-zolana-raw-size";
  * download repeats at most.
  */
 const keyPartBytes = 8 << 20;
+/**
+ * Ranged requests in flight. A CDN edge that does not hold a key answers each
+ * range from its origin: one at a time a key came at about 13 MiB/s, four at a
+ * time at about 45 (from an edge that holds it, 43 against 76).
+ */
+const keyPartsAtOnce = 4;
 
 /** The Cache API ignores fragments, so the raw entry gets its own query. */
 function rawKeyUrl(url: string): string {
@@ -364,14 +404,18 @@ function partUrl(url: string, index: number): string {
   return `${url}?zolana-key=part-${String(index)}`;
 }
 
-/** How many leading parts of a download of `size` bytes the cache keeps. */
-async function keptParts(cache: Cache, url: string, size: number, signal: AbortSignal): Promise<number> {
-  let index = 0;
-  while (index * keyPartBytes < size) {
-    if ((await optionalCache(() => cache.match(partUrl(url, index)), signal)) === undefined) break;
-    index += 1;
+/**
+ * How many bytes of a download of `size` bytes the cache keeps in parts. The
+ * first part goes alone, so a download that kept any kept that one.
+ */
+async function keptBytes(cache: Cache, url: string, size: number, signal: AbortSignal): Promise<number> {
+  let kept = 0;
+  for (let index = 0; index * keyPartBytes < size; index++) {
+    if ((await optionalCache(() => cache.match(partUrl(url, index)), signal)) !== undefined)
+      kept += Math.min(keyPartBytes, size - index * keyPartBytes);
+    else if (index === 0) break;
   }
-  return index;
+  return kept;
 }
 
 async function deleteParts(cache: Cache, url: string, size: number, signal: AbortSignal): Promise<void> {
