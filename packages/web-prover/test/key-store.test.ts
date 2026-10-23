@@ -53,19 +53,29 @@ beforeEach(() => {
 
 /**
  * A key host that answers ranges with 206, or with 200 as an extension's own files do,
- * or ignores them; `failFrom` drops the connection at a part.
+ * or ignores them; `failFrom` drops the connection at a part and after it, `failAt`
+ * at that part alone. `inFlight` is the most requests it answered at once.
  */
-function host(options: Readonly<{ ignoreRanges?: boolean; rangeStatus?: number; failFrom?: number }> = {}) {
+function host(
+  options: Readonly<{ ignoreRanges?: boolean; rangeStatus?: number; failFrom?: number; failAt?: number }> = {},
+) {
   const ranges: string[] = [];
+  let open = 0;
+  const seen = { inFlight: 0 };
   const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
     const requested = new Headers(init?.headers).get("range");
     ranges.push(requested ?? "");
+    open += 1;
+    seen.inFlight = Math.max(seen.inFlight, open);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    open -= 1;
     if (requested === null || options.ignoreRanges === true) return new Response(key.slice());
     const [start, end] = requested.slice("bytes=".length).split("-").map(Number) as [number, number];
     if (options.failFrom !== undefined && start >= options.failFrom) throw new TypeError("connection dropped");
+    if (start === options.failAt) throw new TypeError("connection dropped");
     return new Response(key.slice(start, end + 1), { status: options.rangeStatus ?? 206 });
   });
-  return { fetch, ranges };
+  return { fetch, ranges, seen };
 }
 
 function prover(fetch: typeof globalThis.fetch, onKeyProgress?: (progress: KeyProgress) => void) {
@@ -78,12 +88,16 @@ function prover(fetch: typeof globalThis.fetch, onKeyProgress?: (progress: KeyPr
 }
 
 it("downloads a key in ranged parts and keeps only its decoded form", async () => {
-  const { fetch, ranges } = host();
+  const { fetch, ranges, seen } = host();
   const progress: KeyProgress[] = [];
   const instance = prover(fetch, (update) => progress.push(update));
   await instance.proveRequest(body);
   expect(ranges).toEqual([range(0, part), range(part, 2 * part), range(2 * part, key.length)]);
-  expect(progress.filter((update) => update.stage === "download").at(-1)?.loaded).toBe(key.length);
+  // The first part alone, the others together.
+  expect(seen.inFlight).toBe(2);
+  const loaded = progress.filter((update) => update.stage === "download").map((update) => update.loaded);
+  expect(loaded).toEqual([...loaded].sort((a, b) => a - b));
+  expect(loaded.at(-1)).toBe(key.length);
   expect([...entries.keys()]).toEqual([rawUrl]);
   instance.terminate();
 });
@@ -100,6 +114,22 @@ it("resumes an interrupted download from the parts it kept", async () => {
   expect(status).toEqual({ keyFile: "transfer_confidential_2_2.key", size: key.length, downloaded: part, decoded: false });
   await second.proveRequest(body);
   expect(ranges).toEqual([range(part, 2 * part), range(2 * part, key.length)]);
+  expect([...entries.keys()]).toEqual([rawUrl]);
+  second.terminate();
+});
+
+it("resumes with the parts it lacks when a later part arrived first", async () => {
+  const first = prover(host({ failAt: part }).fetch);
+  await expect(first.proveRequest(body)).rejects.toThrow();
+  first.terminate();
+  expect([...entries.keys()].sort()).toEqual([partUrl(0), partUrl(2)]);
+
+  const { fetch, ranges } = host();
+  const second = prover(fetch);
+  const status = (await second.provingKeys()).find((entry) => entry.keyFile === "transfer_confidential_2_2.key");
+  expect(status?.downloaded).toBe(key.length - part);
+  await second.proveRequest(body);
+  expect(ranges).toEqual([range(part, 2 * part)]);
   expect([...entries.keys()]).toEqual([rawUrl]);
   second.terminate();
 });
