@@ -5,7 +5,7 @@
 - every confidential transfer and merge key upstream pins has a zopro key in `zopro-keys.lock`, built from the gnark key upstream pins (`key_sha256`), in the same key set and CDN folder;
 - the wallet example depends on the pinned SDK, and the installed SDK's `PROVING_KEY_SHA256S` match the gnark keys the zopro keys were built from.
 
-The wallet example installs the SDK from npm, so its pin may lag the protocol pin until that version is published there: the check then notes the lag and skips the installed SDK, and fails once the version is on npm. `@heliuslabs/zolana` 0.5.0-alpha is not on npm yet, so the example stays on 0.4.0-alpha.
+The wallet example installs the SDK from npm, so its pin may lag the protocol pin until that version is published there: the check then notes the lag and skips the installed SDK, and fails once the version is on npm.
 
 To rebuild the keys after a rotation, run zopro's `tools/gnark/build-keys.sh` with upstream's gnark lockfile, publish the `.zopro` files in the key set's CDN folder and copy the `zopro-keys.lock` it writes here; the package's build and tests generate the key digests and shapes from it.
 

@@ -3,6 +3,7 @@ import {
   SOL_MINT,
   Wallet,
   buildDepositTransaction,
+  buildMultiTransferTransaction,
   buildRegistrationTransaction,
   buildTransferTransaction,
   buildWithdrawalTransaction,
@@ -11,6 +12,7 @@ import {
   syncWallet,
   type Bytes32,
   type ShieldedAddress,
+  type TransferPayment as Payment,
 } from "@heliuslabs/zolana";
 import { ed25519DerivationMessage } from "@heliuslabs/zolana/keypair";
 import { isWalletRegistered } from "@heliuslabs/zolana/wallet";
@@ -26,14 +28,15 @@ import {
   type Transaction,
 } from "@solana/kit";
 import { ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
-import { buildPaymentsTransaction, type Payment } from "./multi-transfer.js";
 export type { Payment };
 
-// devnet-d's indexer and prover directly, until the Helius gateway serves devnet-d.
+// devnet-d's indexer directly, until the Helius gateway serves devnet-d. The
+// prover URL is loopback, so the SDK sends proof requests in plaintext and
+// the page answers them; nothing is sent there.
 export const endpoints = {
   solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
   indexerUrl: import.meta.env.VITE_INDEXER_URL ?? "https://d21d98xh5lgv3b.cloudfront.net",
-  proverUrl: import.meta.env.VITE_PROVER_URL ?? "https://d1unet9hn0mci0.cloudfront.net",
+  proverUrl: "http://127.0.0.1:3001",
 };
 
 type Client = Awaited<ReturnType<typeof createZolanaClient>>;
@@ -132,8 +135,9 @@ export const actions = {
   },
   /** One transfer and one proof pay every recipient, each a private output. */
   async pay(session: Session, payments: readonly Payment[]): Promise<bigint> {
-    const { client, wallet, keys } = session;
-    return submit(session, await buildPaymentsTransaction({ client, wallet, keys, payments }));
+    const { client, wallet, keys, signer } = session;
+    const transaction = await buildMultiTransferTransaction({ client, wallet, keys, feePayer: signer.address, payments });
+    return submit(session, transaction);
   },
   async unshield(session: Session, amount: bigint): Promise<bigint> {
     const { client, wallet, keys, signer } = session;
