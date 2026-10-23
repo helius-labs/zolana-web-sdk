@@ -4,7 +4,7 @@ import { neededKeys } from "../src/shapes.js";
 const files = (shapes: ReturnType<typeof neededKeys>) => shapes.map((shape) => shape.keyFile);
 
 it("names the keys of every spend and merge up to the limits, smallest first", () => {
-  const needed = neededKeys(3, [2, 4], 30);
+  const needed = neededKeys(3, [2, 4], 24);
   expect([...files(needed)].sort()).toEqual(
     [
       "transfer_confidential_1_2.key",
@@ -15,7 +15,6 @@ it("names the keys of every spend and merge up to the limits, smallest first", (
       "transfer_confidential_3_4.key",
       "merge_8_1.key",
       "merge_24_1.key",
-      "merge_52_1.key",
     ].sort(),
   );
   const sizes = needed.map((shape) => shape.keyBytes);
@@ -31,7 +30,7 @@ it("takes the smallest shape that holds a spend, and no merge below two notes", 
 });
 
 it("refuses limits no pinned key holds", () => {
-  expect(() => neededKeys(1, [2], 53)).toThrow("no supported merge holds 53 notes");
+  expect(() => neededKeys(1, [2], 25)).toThrow("the browser merges at most 24 notes, not 25");
   expect(() => neededKeys(50, [2], 0)).toThrow("no supported shape holds 50x2");
 });
 
@@ -39,7 +38,9 @@ it("lists every pinned transfer and merge key, smallest first, so the first fit 
   const { KEY_DIGESTS } = await import("../src/key-digests.js");
   const { MERGE_SHAPE, MERGE_SHAPES, TRANSFER_SHAPES, canonicalShape } = await import("../src/shapes.js");
   const listed = [...TRANSFER_SHAPES, ...MERGE_SHAPES].map((shape) => shape.keyFile).sort();
-  expect(listed).toEqual(Object.keys(KEY_DIGESTS).sort());
+  // Every pinned key but the merges wider than the browser proves.
+  expect(listed).toEqual(Object.keys(KEY_DIGESTS).filter((name) => name !== "merge_52_1.key").sort());
+  expect(MERGE_SHAPES.map((shape) => shape.inputs)).toEqual([8, 24]);
   for (const shapes of [TRANSFER_SHAPES, MERGE_SHAPES]) {
     const sizes = shapes.map((shape) => shape.keyBytes);
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));

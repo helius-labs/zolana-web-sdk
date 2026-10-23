@@ -3,6 +3,7 @@ export {
   MERGE_KEY_BYTES,
   MERGE_KEY_FILE,
   MERGE_SHAPE,
+  MAX_BROWSER_MERGE_INPUTS,
   MERGE_SHAPES,
   keyForProveRequest,
   canonicalShape,

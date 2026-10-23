@@ -6,8 +6,8 @@ Proofs are made by zopro, a Rust Groth16 prover for gnark's circuits: one WebAss
 
 Breaking
 
-- Proves the requests of `@heliuslabs/zolana` 0.5.0-alpha (zolana v0.5.0-alpha, which devnet-d runs) with the zopro keys of its key set, `8e234b5a589cfb79`: a merge takes 8, 24 or 52 notes and carries its mint chunks and output ciphertext salt. Requests and keys of 0.4.0-alpha fail.
-- `@heliuslabs/zolana` 0.5.0-alpha encrypts its calls to a prover for the prover's attested enclave unless the prover is on loopback, so the `proverUrl` that `createFetch()` answers for is a loopback URL such as `http://localhost`.
+- Proves the requests of `@heliuslabs/zolana` 0.5.0-alpha (zolana v0.5.0-alpha, which devnet-d runs) with the zopro keys of its key set, `8e234b5a589cfb79`: a merge carries its mint chunks and output ciphertext salt. The browser merges 8 or 24 notes (`MAX_BROWSER_MERGE_INPUTS`); the 52-note key does not fit in wasm32's 4 GB of memory beside its cached raw form, and a wider merge fails with `wasm_merge_too_wide`. Requests and keys of 0.4.0-alpha fail.
+- `@heliuslabs/zolana` 0.5.0-alpha encrypts its calls to a remote prover for the prover's attested enclave, which `createFetch()` cannot read. Proving in the page through that SDK waits for its option to take a prover object; `proveRequest` works on its own.
 - Proving needs cross-origin isolation and at least one thread (`threads`, by default the browser's processors up to 18).
 - Keys are zopro keys, `<name>.zopro`, each built from the pinned gnark key of the same name and checked against the size and SHA-256 bundled in the package from `zopro-keys.lock`; `zolana-prover-keys` installs the `.zopro` files, and a self-hosted `keyBaseUrl` serves them.
 

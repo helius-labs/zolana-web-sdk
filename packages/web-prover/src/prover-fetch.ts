@@ -7,7 +7,7 @@
 import { abortable, rethrowAbort } from "./abortable.js";
 import { WasmProverError } from "./errors.js";
 import type { Measurement } from "./measurement.js";
-import { proofRequestShape, proveRoute } from "./proof-requests.js";
+import { isWideMerge, proofRequestShape, proveRoute } from "./proof-requests.js";
 
 export interface ProverFetchOptions {
   /** The prover URL handed to the SDK; requests to it are intercepted. */
@@ -36,6 +36,7 @@ export function createProverFetch(options: ProverFetchOptions): typeof globalThi
       if (route.kind === "unsupported") throw new WasmProverError("wasm_invalid_request");
       const body = await abortable(readBody(input, init), signal);
       if (body === undefined) throw new WasmProverError("wasm_invalid_request");
+      if (isWideMerge(body)) throw new WasmProverError("wasm_merge_too_wide");
       // The path names the proving key; prove nothing the body does not match.
       if (route.keyFile !== undefined && proofRequestShape(body)?.keyFile !== route.keyFile) {
         throw new WasmProverError("wasm_invalid_request");

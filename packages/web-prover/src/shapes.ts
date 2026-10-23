@@ -44,11 +44,20 @@ export const TRANSFER_SHAPES: readonly ShapeKey[] = pinnedShapes(
     Object.freeze({ inputs, outputs, label: `${String(inputs)}x${String(outputs)}`, keyFile, keyBytes }),
 );
 
-/** The merge circuits, by input count, mirroring `SupportedInputCounts` in `spp_merge/shared`. */
-export const MERGE_SHAPES: readonly ShapeKey[] = pinnedShapes(
-  /^merge_(\d+)_(1)\.key$/u,
-  (inputs, outputs, keyFile, keyBytes) =>
+/**
+ * The widest merge the browser proves. A wider merge key does not fit in
+ * wasm32's 4 GB of memory beside the decoded form the prover caches.
+ */
+export const MAX_BROWSER_MERGE_INPUTS = 24;
+
+/**
+ * The merge circuits the browser proves, by input count: those of
+ * `SupportedInputCounts` in `spp_merge/shared` up to `MAX_BROWSER_MERGE_INPUTS`.
+ */
+export const MERGE_SHAPES: readonly ShapeKey[] = Object.freeze(
+  pinnedShapes(/^merge_(\d+)_(1)\.key$/u, (inputs, outputs, keyFile, keyBytes) =>
     Object.freeze({ inputs, outputs, label: `merge ${String(inputs)}x1`, keyFile, keyBytes }),
+  ).filter((shape) => shape.inputs <= MAX_BROWSER_MERGE_INPUTS),
 );
 /** The smallest merge circuit. */
 export const MERGE_SHAPE: ShapeKey = MERGE_SHAPES[0]!;
@@ -103,6 +112,11 @@ export function neededKeys(
   const needed = new Set<ShapeKey>();
   for (let inputs = 1; inputs <= maxInputs; inputs++) {
     for (const count of outputs) needed.add(canonicalShape(inputs, count));
+  }
+  if (maxMergeInputs > MAX_BROWSER_MERGE_INPUTS) {
+    throw new Error(
+      `the browser merges at most ${String(MAX_BROWSER_MERGE_INPUTS)} notes, not ${String(maxMergeInputs)}`,
+    );
   }
   // The narrowest merge that holds the notes, as the protocol's merge_circuit_width.
   for (let count = 2; count <= maxMergeInputs; count++) {

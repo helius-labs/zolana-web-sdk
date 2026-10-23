@@ -18,7 +18,7 @@ export { WasmProverError } from "./errors.js";
 import { KeyStore, type KeyBytes, type KeyDigest, type ProvingKeyStatus } from "./key-store.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { createProverFetch } from "./prover-fetch.js";
-import { proofRequestShape } from "./proof-requests.js";
+import { isWideMerge, proofRequestShape } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
 
 /** Messages the worker understands. Mirrored by `prover.worker.ts`. */
@@ -387,7 +387,9 @@ export class WasmProver {
   ): Promise<{ proof: string; proveMs: number; verifyMs: number }> {
     return this.#enqueue(async (active) => {
       const shape = proofRequestShape(body);
-      if (shape === undefined) throw new WasmProverError("wasm_invalid_request");
+      if (shape === undefined) {
+        throw new WasmProverError(isWideMerge(body) ? "wasm_merge_too_wide" : "wasm_invalid_request");
+      }
       await this.#loadKey(shape, active);
       active.throwIfAborted();
       // The runtime verifies the proof before it returns it.
