@@ -1,6 +1,6 @@
 # @heliuslabs/zolana-web-prover
 
-Local Groth16 proving and gnark verification in a browser worker. The core package has no protocol SDK or Solana dependencies. Transaction building, submission and benchmark orchestration live in the repository's browser example, not this package.
+Local Groth16 proving in a browser worker. No protocol SDK or Solana dependencies — transaction building stays in your app (see the [wallet example](https://github.com/helius-labs/zolana-web-sdk/tree/main/examples/wallet)).
 
 ## Install
 
@@ -8,26 +8,32 @@ Local Groth16 proving and gnark verification in a browser worker. The core packa
 npm install @heliuslabs/zolana-web-prover
 ```
 
-The package contains the worker and the prover runtime: zopro-zolana built for the browser, two WebAssembly modules that turn a `/prove` request into the circuit's witness, prove (on a thread pool, or on one thread) and on WebGPU where the browser offers it, and verify the proof before it returns it. Import it, and the app's bundler emits both runtimes' modules and wasm, and the threaded runtime's helpers, as files beside the worker; the packed-consumer CI builds an app with Vite and with webpack 5 and proves from both. A bundler that does not emit `new URL(…, import.meta.url)` assets and nested module workers (esbuild and Rollup without plugins) cannot load the runtime. Keys load on first use from the pinned key set on the Zolana key CDN, which serves them with CORS, and are checked against the size and SHA-256 bundled in the package, so an app installs none.
+Use a bundler that emits `new URL(..., import.meta.url)` assets and nested module workers (Vite and webpack 5 work; plain esbuild/Rollup usually do not). Keys load from the Zolana key CDN on first use and are checked against digests shipped in the package.
 
-For threaded proving, serve the document with:
+## Isolation and threads
+
+For a thread pool (`threads` ≥ 1, defaulting to the machine’s processors up to 18), serve the page with:
 
 ```text
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-Use HTTPS (localhost is suitable for development). The threaded runtime's pool shares memory between workers, so those headers are required when `threads` is one or more (by default the browser's processors, at most 18). Set `threads: 0` for the single-thread runtime, which needs no SharedArrayBuffer and no cross-origin isolation: slower proving, but it works on pages that cannot set COOP/COEP (popups, Firefox, Safari, Firefox extension pages). Key files still decompress across ordinary workers. Document-Isolation-Policy (`isolate-and-credentialless`) also yields `crossOriginIsolated` in Chrome 137+ without breaking popups, so threaded proving can run there without classic COOP/COEP. Every key is checked against the size and SHA-256 bundled in the package from the pinned `zopro-keys.lock`, so the key host does not need to be trusted for integrity.
+Use HTTPS (localhost is fine in development).
 
-In a Chrome extension, prove from an extension page; an extension's service worker cannot start workers. Give the manifest the same isolation and allow WebAssembly for threaded proving, or pass `threads: 0` when the page is not isolated:
+Set `threads: 0` when you cannot isolate (OAuth/dApp popups, Firefox, Safari, Firefox extension pages): a second runtime proves without SharedArrayBuffer. Slower, but it runs. Key decompress still fans out across ordinary workers.
+
+In Chrome 137+, `Document-Isolation-Policy: isolate-and-credentialless` also enables `crossOriginIsolated` without classic COOP/COEP, so threaded proving can keep working with popups.
+
+### Chrome extension
+
+Prove from an extension page (not the service worker). For threaded proving, set isolation in the manifest and allow Wasm; or use `threads: 0`:
 
 ```json
 "cross_origin_embedder_policy": { "value": "require-corp" },
 "cross_origin_opener_policy": { "value": "same-origin" },
 "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" }
 ```
-
-The packed-consumer CI proves under COOP/COEP and under Document-Isolation-Policy at zero, one and two threads, and without isolation at `threads: 0`.
 
 ## Prove locally
 
@@ -48,25 +54,23 @@ try {
 }
 ```
 
-`proveRequest` accepts the protocol's `/prove` JSON string and returns its proof JSON only after the runtime verified it with the key's verifying key. No transaction is built or sent. The runtime proves requests from `@heliuslabs/zolana` 0.5.0-alpha, transfers and merges of up to 24 notes (`MAX_BROWSER_MERGE_INPUTS`; the 52-note merge key does not fit in wasm32's 4 GB of memory beside its cached raw form, and a wider merge fails with `wasm_merge_too_wide`), and reports each proof's `provingKeySha256`, the gnark proving key's that the zopro key was built from, which that SDK checks against its pinned keys. A proof made on the GPU that does not verify is proved again on the CPU, which proves that key from then on. To connect it, pass `prover.createFetch()` as `fetch`, set `proofDataSource: "client"`, and pass the same `proverUrl` to `createZolanaClient`, then prove through `LocalKeys.fromKeypair(keypair, client.proofService)`, or, for a browser wallet, `LocalKeys.fromDerivationSeed` with the wallet's signature over `ed25519DerivationMessage(publicKey)` (the repository's [wallet example](https://github.com/helius-labs/zolana-web-sdk/tree/main/examples/wallet) shows the whole flow). Use a loopback `proverUrl`: `@heliuslabs/zolana` 0.5.0-alpha sends a loopback prover plaintext, which `createFetch()` answers, and encrypts calls to any other prover for its attested enclave, which `createFetch()` cannot read. Requests to that URL's `/prove/<key>` endpoint, and to the bare `/prove` the Helius gateway routes to, are proved locally with the key the request names; a `<key>` that does not match the request body and any other path below `/prove` (such as `/prove/<key>/indexed`) get a 500 and are never forwarded. All other requests are delegated to the configured fetch implementation.
+`proveRequest` takes a `/prove` JSON body and returns proof JSON after local verification. Supports `@heliuslabs/zolana` 0.5.0-alpha transfers and merges of up to 24 notes (`MAX_BROWSER_MERGE_INPUTS`). Each proof includes `provingKeySha256` for the SDK’s key pin check. If a GPU proof fails verification, the same request is retried on the CPU.
 
-## Self-host proving keys
+### With `@heliuslabs/zolana`
 
-To serve keys yourself, for offline use, a mirror or your own CDN, install the shapes your application's requests need and pass their location as `keyBaseUrl` (for example `keyBaseUrl: "/keys"`):
+Pass `prover.createFetch()` as `fetch`, set `proofDataSource: "client"`, and use the same loopback `proverUrl` on the client (0.5.0-alpha encrypts non-loopback prover calls for an enclave). Then prove through `LocalKeys.fromKeypair` or, in a wallet, `LocalKeys.fromDerivationSeed`. Paths under that URL’s `/prove` are answered locally; everything else is delegated.
+
+## Self-host keys
 
 ```sh
 npx --no-install zolana-prover-keys --output public/keys --keys transfer_confidential_1_2.key,transfer_confidential_2_2.key
 ```
 
-A key is named after the gnark proving key it was built from, and installs as `<name>.zopro`. Names must be confidential-transfer or merge keys present in the pinned `zopro-keys.lock`; arbitrary names, paths and unsupported circuits are rejected before installation. Bytes still undergo size and SHA-256 checks. Use `keyForProveRequest` or `observeProofRequests` to identify needed shapes without logging witness bodies. A missing key fails rather than substituting a different circuit. Previously downloaded files are not deleted when selecting a new list. The command needs Node.js and network access; for a local mirror of the key set, set `ZOLANA_KEYS_BASE_URL` to a `file:///.../` directory, and the same checks apply.
+Pass `keyBaseUrl` (for example `"/keys"`). Names must appear in the pinned key set; files install as `<name>.zopro` and are size/SHA-256 checked. For a local mirror, set `ZOLANA_KEYS_BASE_URL` to a `file:///.../` directory.
 
-Keys are 7–302 MB each for confidential transfers (12 MB for 2x2, 73 MB for 12x8) and 42–140 MB for merge; a loaded key and its proofs need additional memory. Only one loaded key is retained, and changing shapes reloads it. The first load of a shape decompresses the key's curve points and builds its solver, which takes a second or more in wasm (1.5 s for 2x2), and stores the result, the raw form, in the browser Cache API in place of the downloaded file; later loads, including after a reload, read the raw form in a few tens of milliseconds (0.03 s for 2x2); it is checked by size, not hashed again, since a damaged entry fails its load and is rebuilt from the pinned key. The raw form is about three times the file's size, and storage is subject to the browser's quota. Keys live in the Cache API store `zolana-proving-keys-<key set>`, and stores left by other key sets are deleted on first use. Pass `persistStorage: true` to ask the browser not to evict them under storage pressure (`navigator.storage.persist()`; Firefox asks the user). Install only the shapes you use, and budget separately for download/storage size and runtime memory.
+Keys are tens to hundreds of MB; a loaded key needs more working memory. Only one shape is resident at a time. The first load decompresses points and caches a raw form in the Cache API; later loads are much faster. Pass `persistStorage: true` to request durable storage. Downloads resume in 8 MB parts after interrupt.
 
-A key downloads in ranged parts of 8 MB, each kept in the cache as it arrives, so a download that a closed tab, a lost connection or an abort interrupted resumes where it stopped; a host that ignores ranges sends the whole key instead. The key is checked against the lockfile once it is whole, and a download that resumed from a damaged part starts over once.
-
-## Prefetch keys
-
-`prefetch` downloads, checks and decodes keys ahead of the proofs that need them, for example right after a wallet connects, so the first send doesn't wait seconds for its key. Shapes whose decoded form is already cached are skipped, and a proof requested meanwhile runs after the shape in progress:
+## Prefetch
 
 ```ts
 await prover.prefetch({
@@ -75,22 +79,11 @@ await prover.prefetch({
 });
 ```
 
-`stage` is `download` while bytes arrive and `decode` once the worker starts loading the key. Pass `onKeyProgress` to the constructor to receive the same events for every load, including the ones a proof triggers. Without the Cache API only the last prefetched shape stays loaded.
+`neededKeys(maxInputs, outputs, maxMergeInputs)` lists shapes for spends/merges up to those limits. `provingKeys()` / `clearKeys()` report and clear cached key bytes.
 
-`neededKeys(maxInputs, outputs, maxMergeInputs)` names the shapes that spends of up to `maxInputs` notes with `outputs` outputs, and merges of up to `maxMergeInputs` notes (at most 24), prove with, smallest first, for `prefetch`; a transfer has two outputs, the payment and the change. `provingKeys()` lists every key the prover can load with its size, the bytes the browser keeps of it and whether its decoded form is kept, without starting the worker. `clearKeys()` removes the kept keys, their decoded forms and interrupted downloads after any work in progress. These follow the mobile SDK's `ProvingKeys.needed`, `status` and `clear`:
+## Lifecycle
 
-```ts
-const shapes = neededKeys(8, [2], 24); // spends of up to 8 notes, merges of up to 24
-await prover.prefetch({ shapes });
-const kept = (await prover.provingKeys()).reduce((sum, key) => sum + key.downloaded, 0);
-```
-
-## Lifecycle and failures
-
-- First use initializes the worker automatically. Requests are serialized; only one loaded key is resident at a time.
-- Cache API access is best-effort. Cached bytes are validated; unavailable storage and quota failures fall back to validated network bytes. Abort and integrity failures remain errors.
-- An `AbortSignal` cancels queued work without interrupting active work. Cancelling active work terminates the runtime and rejects its queued requests. A retained worker factory allows a later request to restart automatically after cancellation or a worker failure.
-- `terminate()` rejects outstanding work, clears the factory and disables automatic restart. Create a new prover, or explicitly call `start(factory)` to reuse the object. A supplied single `Worker` cannot be recreated automatically.
-- `WasmProverError.code` and its fixed message identify failures without serializing backend messages, witness values, causes or stacks from the backend. Core code does not log errors. The fetch adapter returns a JSON 500 with the safe `code` and `message`; cancellation rejects instead. Caller-provided abort reasons and callback errors remain caller-controlled and should not contain secrets.
-
-The runtime is built from the zopro revision the repository's `runtime.lock.json` pins, with Rayon's thread helpers for bundlers, and ships in the package. The worker sends only error codes across its boundary, and the API redacts anything else as defense in depth.
+- The worker starts on first use. Work is serialized; one key is loaded at a time.
+- `AbortSignal` cancels queued work; cancelling in-flight work tears down the runtime (it can restart via the retained factory).
+- `terminate()` stops the worker and disables auto-restart.
+- Failures surface as `WasmProverError` with a stable `code` (no witness or backend detail in the message).
