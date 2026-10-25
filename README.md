@@ -23,7 +23,7 @@ npm run dev:wallet  # the wallet example, after its setup in examples/wallet/REA
 
 `npm run setup` builds the package, with the prover runtime built from the pinned zopro revision with Rust `nightly-2025-11-15` (the `wasm32-unknown-unknown` target and `rust-src`) and wasm-bindgen 0.2.128, stages the request fixtures, and installs the 2-input/2-output proving key for the benchmark (`npm run keys` in `examples/browser`). `ZOPRO_DIR` builds from a zopro checkout instead of a clone of the pinned revision, and `ZOLANA_KEYS_BASE_URL` takes keys from a mirror such as a `file:///.../` directory. Source builds require Rust; an app that installs the package needs only its bundler, not Rust or wasm-bindgen.
 
-The demo requires cross-origin isolation for the runtime's thread pool. Its Vite server already sends the required COOP/COEP headers.
+The demo's threaded mode requires cross-origin isolation for the runtime's thread pool; its Vite server already sends the required COOP/COEP headers. Choose Single thread in Options (or pass `threads: 0`) for the runtime built without SharedArrayBuffer, which works without isolation.
 
 ## Validation
 
@@ -35,7 +35,7 @@ npm run check:full  # also the browser test and the consumer gate
 
 The browser test starts and stops its own Vite server; set `DEMO_URL` only when testing an already-running deployment. CI runs these hermetic gates; the wallet example's devnet test, run by hand with a funded key, is the end-to-end check with requests the SDK builds.
 
-The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages and with no asset step, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, builds an app with Vite and with webpack 5, and runs proofs at one and two threads from both builds and from the Vite build loaded as an MV3 extension page, with malformed-witness privacy and recovery checks. It needs Chrome, and installs Chrome for Testing under `target/` for the extension, which branded Chrome no longer loads from the command line.
+The consumer gate packs the prover, installs it outside the workspace without protocol/Solana packages and with no asset step, checks strict TypeScript with `skipLibCheck: false` in NodeNext and bundler modes, builds an app with Vite and with webpack 5, and runs proofs at zero, one and two threads under COOP/COEP, under Document-Isolation-Policy, and from an MV3 extension page, plus a single-thread proof with no isolation headers, with malformed-witness privacy and recovery checks. It needs Chrome, and installs Chrome for Testing under `target/` for the extension, which branded Chrome no longer loads from the command line.
 
 The opt-in devnet gate drives the wallet example in Chrome: a fresh key registers, shields, sends privately, sends with an app fee and unshields through the published SDK, and every proof must be made in the page:
 

@@ -9,7 +9,12 @@ const runtime = vi.hoisted(() => ({
   raw_format: () => "raw-test",
   ZolanaProver: class {},
 }));
-vi.mock("../src/runtime.js", () => ({ importRuntime: async () => runtime }));
+vi.mock("../src/runtime.js", () => ({
+  importThreadedRuntime: async () => runtime,
+  importSingleRuntime: async () => {
+    throw new Error("single runtime unused");
+  },
+}));
 
 let scope: EventTarget & { postMessage: ReturnType<typeof vi.fn> };
 

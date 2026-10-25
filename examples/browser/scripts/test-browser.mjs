@@ -102,6 +102,10 @@ try {
   await closeOptions();
   await run("zopro · 2 threads");
   await openOptions();
+  await mode.findElement(By.css('option[value="single"]')).click();
+  await closeOptions();
+  await run("zopro · single thread");
+  await openOptions();
   await mode.findElement(By.css('option[value="auto"]')).click();
   await closeOptions();
 
@@ -131,7 +135,7 @@ try {
   await writeFile(`${out}/proofs.json`, JSON.stringify(proofs, null, 2));
   await writeFile(`${out}/results.json`, JSON.stringify(results, null, 2));
   console.log(
-    "PASS: proving, benchmark, cancellation, invalid input recovery, automatic/custom threads, mobile dialog, focus return, and no external API requests.",
+    "PASS: proving, benchmark, cancellation, invalid input recovery, automatic/custom/single threads, mobile dialog, focus return, and no external API requests.",
   );
 } catch (error) {
   await writeFile(`${out}/failure.png`, await driver.takeScreenshot(), "base64");

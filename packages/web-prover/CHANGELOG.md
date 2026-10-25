@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `threads: 0` loads a second runtime built without shared memory, so proving works on pages that are not cross-origin isolated. Key files decompress across ordinary workers; the threaded runtime (one or more threads) is unchanged.
+
 ## 0.4.0-alpha — 2026-10-23
 
 Proofs are made by zopro, a Rust Groth16 prover for gnark's circuits: one WebAssembly module, shipped in the package, that turns a `/prove` request into the circuit's witness, proves on a thread pool and on WebGPU where the browser has it, and verifies the proof before it returns it. A warm 2x2 proof takes 0.08 s at four threads on an Apple M5 Pro with WebGPU, 8x2 0.17 s and 24x2 0.43 s; on the CPU alone 0.28 s, 0.87 s and 2.6 s.

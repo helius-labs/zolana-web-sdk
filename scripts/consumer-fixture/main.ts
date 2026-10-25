@@ -11,7 +11,10 @@ window.checkPackedProver = async () => {
   const sentinel = "review-private-sentinel";
   const measurements: Measurement[] = [];
   const results: unknown[] = [];
-  for (const threads of [1, 2]) {
+  // Isolated pages exercise the pool and the single-thread fallback; others only
+  // the fallback (threaded init refuses without SharedArrayBuffer).
+  const threadCounts = crossOriginIsolated ? [0, 1, 2] : [0];
+  for (const threads of threadCounts) {
     const prover = new ZolanaWebProver({
       keyBaseUrl: "/keys",
       proverUrl: location.origin + "/local",

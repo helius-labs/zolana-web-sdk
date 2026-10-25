@@ -8,13 +8,26 @@
  * proof takes seconds, so this is a worker. Every operation is timed here
  * rather than on the page so the reported proving cost excludes postMessage
  * and structured-clone overhead.
+ *
+ * `threads` greater than zero needs a cross-origin isolated page and starts
+ * the Rayon pool. `threads: 0` loads the runtime built without shared memory,
+ * which proves on this worker alone and needs no isolation: key files are
+ * decompressed across ordinary workers (`key-decoders.ts`) instead.
  */
 
 import type { WorkerRequest, WorkerResponse } from "./wasm-prover.js";
 import { operationError, WasmProverError } from "./errors.js";
-import { importRuntime, type ProofValue, type Runtime, type ZolanaProver } from "./runtime.js";
+import { decodeKey } from "./key-decoders.js";
+import {
+  importSingleRuntime,
+  importThreadedRuntime,
+  type ProofValue,
+  type Runtime,
+  type ZolanaProver,
+} from "./runtime.js";
 
 let runtime: Runtime | undefined;
+let pooled = false;
 let activeThreads = 0;
 let loaded: { fileName: string; prover: ZolanaProver } | undefined;
 
@@ -22,21 +35,34 @@ let loaded: { fileName: string; prover: ZolanaProver } | undefined;
 // the page refuses never does; a pool that has not started by then has failed.
 const threadPoolTimeoutMs = 30_000;
 
+/** Magic of a cached raw key (`zopro-raw-3`); those skip worker decompression. */
+const rawKeyMagic = new TextEncoder().encode("zopro-raw3\0\0\0\0\0\0");
+
 async function init(threads: number): Promise<void> {
   if (runtime !== undefined) return;
-  if (!Number.isInteger(threads) || threads < 1 || threads > 64) {
-    throw new Error("Threads must be an integer between 1 and 64");
+  if (!Number.isInteger(threads) || threads < 0 || threads > 64) {
+    throw new Error("Threads must be an integer between 0 and 64");
   }
-  if (!globalThis.crossOriginIsolated)
-    throw new Error(
-      "Proving requires cross-origin isolation. Use the Vite server with COOP/COEP headers.",
-    );
-  const module = await importRuntime();
+  if (threads > 0) {
+    if (!globalThis.crossOriginIsolated)
+      throw new Error(
+        "Threaded proving requires cross-origin isolation. Use the Vite server with COOP/COEP headers, or set threads: 0.",
+      );
+    const module = await importThreadedRuntime();
+    await module.default();
+    await withTimeout(module.initThreadPool(threads), threadPoolTimeoutMs);
+    if ("gpu" in navigator) await module.init_gpu();
+    runtime = module;
+    pooled = true;
+    activeThreads = threads;
+    return;
+  }
+  const module = await importSingleRuntime();
   await module.default();
-  await withTimeout(module.initThreadPool(threads), threadPoolTimeoutMs);
   if ("gpu" in navigator) await module.init_gpu();
   runtime = module;
-  activeThreads = threads;
+  pooled = false;
+  activeThreads = 0;
 }
 
 async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -56,17 +82,46 @@ function requireRuntime(): Runtime {
   return runtime;
 }
 
-function loadKey(
+function isRawKey(key: Uint8Array): boolean {
+  if (key.byteLength < rawKeyMagic.byteLength) return false;
+  for (let i = 0; i < rawKeyMagic.byteLength; i++) {
+    if (key[i] !== rawKeyMagic[i]) return false;
+  }
+  return true;
+}
+
+/** Decoder workers for a key file on the single-thread path. */
+function decoderWorkers(): number {
+  const reported = globalThis.navigator?.hardwareConcurrency;
+  if (reported === undefined || !Number.isFinite(reported) || reported < 1) return 4;
+  return Math.min(8, Math.floor(reported));
+}
+
+async function loadKey(
   fileName: string,
   key: Uint8Array,
   keySha256: string,
   exportRaw: boolean,
-): { key: string; inputs: number; outputs: number; raw?: Uint8Array } {
-  const { ZolanaProver } = requireRuntime();
+): Promise<{ key: string; inputs: number; outputs: number; raw?: Uint8Array }> {
+  const module = requireRuntime();
   // One key at a time: its points are most of the wasm heap.
   loaded?.prover.free();
   loaded = undefined;
-  const prover = new ZolanaProver(key);
+  let prover: ZolanaProver;
+  if (pooled || isRawKey(key)) {
+    prover = new module.ZolanaProver(key);
+  } else {
+    const vectors = await decodeKey(module, key, decoderWorkers());
+    if (vectors.length !== 5) throw new Error("key decompress returned the wrong vectors");
+    prover = module.ZolanaProver.from_vectors(
+      key,
+      vectors[0]!,
+      vectors[1]!,
+      vectors[2]!,
+      vectors[3]!,
+      vectors[4]!,
+    );
+  }
   if (prover.digest() !== keySha256) {
     prover.free();
     throw new WasmProverError("wasm_key_digest_mismatch");
@@ -110,7 +165,7 @@ async function handle(request: WorkerRequest): Promise<unknown> {
         rawKeyFormat: requireRuntime().raw_format(),
       };
     case "loadKey":
-      return loadKey(
+      return await loadKey(
         request.fileName,
         new Uint8Array(request.key),
         request.keySha256,

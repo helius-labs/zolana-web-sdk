@@ -57,7 +57,10 @@ export type WorkerResponse = Readonly<{
 }>;
 
 export interface WasmProverOptions {
-  /** Threads of the proving pool, at least one; omit to choose automatically. */
+  /**
+   * Threads of the proving pool (one or more; omit to choose automatically), or
+   * `0` for the single-thread runtime without SharedArrayBuffer.
+   */
   readonly threads?: number;
   /**
    * Where proving keys are fetched from. Omit it to use the pinned key set on
@@ -408,7 +411,10 @@ export class WasmProver {
       this.#options.onMeasurement?.({
         step: "transfer-prove",
         ms: response.ms,
-        note: `zopro proof, ${String(this.#threads)} threads; locally verified`,
+        note:
+          this.#threads === 0
+            ? "zopro proof, single thread; locally verified"
+            : `zopro proof, ${String(this.#threads)} threads; locally verified`,
       });
       return { proof: value.proof, proveMs: response.ms - value.verifyMs, verifyMs: value.verifyMs };
     }, signal);
