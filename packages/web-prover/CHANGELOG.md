@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.4.1-alpha — 2026-10-25
 
 ### Added
 
-- `threads: 0` loads a second runtime built without shared memory, so proving works on pages that are not cross-origin isolated. Key files decompress across ordinary workers; the threaded runtime (one or more threads) is unchanged.
+- `threads: 0` loads a second runtime built without shared memory, so proving works on pages that are not cross-origin isolated. Key files decompress across ordinary workers; the threaded runtime (one or more threads) is unchanged. Document-Isolation-Policy (`isolate-and-credentialless`) is also exercised in the packed-consumer CI as a way to isolate without COOP/COEP.
 
 ## 0.4.0-alpha — 2026-10-23
 
