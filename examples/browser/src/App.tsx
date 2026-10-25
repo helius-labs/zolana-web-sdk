@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { automaticProvingThreads, WasmProver } from "@heliuslabs/zolana-web-prover";
 
 type Mode = "proof" | "benchmark";
-type ThreadMode = "auto" | "custom";
+type ThreadMode = "auto" | "custom" | "single";
 type Phase = "loading" | "idle" | "starting" | "preparing" | "proving";
 type ProofResult = Awaited<ReturnType<WasmProver["proveRequest"]>>;
 
@@ -34,7 +34,8 @@ export function App(): React.ReactElement {
     Number.isInteger(Number(customThreads)) &&
     Number(customThreads) >= 1 &&
     Number(customThreads) <= 64;
-  const threads = threadMode === "auto" ? automaticThreads : Number(customThreads);
+  const threads =
+    threadMode === "auto" ? automaticThreads : threadMode === "single" ? 0 : Number(customThreads);
   const busy = phase !== "idle" && phase !== "loading";
   const latest = results.at(-1);
   const provingMs = results.length ? median(results.map((result) => result.proveMs)) : undefined;
@@ -97,9 +98,9 @@ export function App(): React.ReactElement {
           "The proof input isn't valid JSON. Check it in Options or restore the sample.",
         );
       }
-      if (!globalThis.crossOriginIsolated) {
+      if (threads > 0 && !globalThis.crossOriginIsolated) {
         throw new Error(
-          "Proving needs a cross-origin isolated page, which this browser did not give.",
+          "Threaded proving needs a cross-origin isolated page. Choose Single thread in Options, or serve COOP/COEP.",
         );
       }
       let instance = runtime.current;
@@ -312,6 +313,7 @@ export function App(): React.ReactElement {
               >
                 <option value="auto">Automatic</option>
                 <option value="custom">Custom threads</option>
+                <option value="single">Single thread</option>
               </select>
             </label>
             {threadMode === "custom" && (
@@ -337,6 +339,9 @@ export function App(): React.ReactElement {
             <p className="field-error">Choose between 1 and 64 threads.</p>
           )}
           {threadMode === "auto" && <p className="settings-note">{automaticThreads} threads</p>}
+          {threadMode === "single" && (
+            <p className="settings-note">No SharedArrayBuffer; works without cross-origin isolation</p>
+          )}
           <details className="input-details">
             <summary>Proof input</summary>
             <label className="sr-only" htmlFor="proof-input">
@@ -402,7 +407,11 @@ export function App(): React.ReactElement {
             </div>
             <div>
               <dt>Engine</dt>
-              <dd>{`zopro · ${String(activeThreads)} threads`}</dd>
+              <dd>
+                {activeThreads === 0
+                  ? "zopro · single thread"
+                  : `zopro · ${String(activeThreads)} threads`}
+              </dd>
             </div>
           </dl>
           <pre className="proof-json">

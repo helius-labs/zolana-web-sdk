@@ -62,10 +62,12 @@ try {
     ["-p", "tsconfig.json", "--module", "preserve", "--moduleResolution", "bundler"],
     consumer,
   );
-  // The runtime ships in the package as built, beside the worker the app's bundler emits.
+  // Both runtimes ship in the package as built, beside the worker the app's bundler emits.
   for (const [packaged, source] of [
-    ["dist/runtime/zopro_zolana.js", "packages/web-prover/src/runtime/zopro_zolana.js"],
-    ["dist/runtime/zopro_zolana_bg.wasm", "packages/web-prover/src/runtime/zopro_zolana_bg.wasm"],
+    ["dist/runtime/threads/zopro_zolana.js", "packages/web-prover/src/runtime/threads/zopro_zolana.js"],
+    ["dist/runtime/threads/zopro_zolana_bg.wasm", "packages/web-prover/src/runtime/threads/zopro_zolana_bg.wasm"],
+    ["dist/runtime/single/zopro_zolana.js", "packages/web-prover/src/runtime/single/zopro_zolana.js"],
+    ["dist/runtime/single/zopro_zolana_bg.wasm", "packages/web-prover/src/runtime/single/zopro_zolana_bg.wasm"],
     ["dist/scripts/install-keys.mjs", "packages/web-prover/scripts/install-keys.mjs"],
   ]) {
     assert.deepEqual(await readFile(join(installed, packaged)), await readFile(join(root, source)), packaged);
@@ -100,14 +102,21 @@ try {
     join(consumer, "dist-webpack/index.html"),
     '<!doctype html><html><head><meta charset="utf-8"></head><body><script src="/main.js"></script></body></html>\n',
   );
-  // Both bundlers emit the runtime's wasm as a file, not inlined.
-  const runtimeSize = (await readFile(join(installed, "dist/runtime/zopro_zolana_bg.wasm"))).length;
+  // Both bundlers emit each runtime's wasm as a file, not inlined.
+  const runtimeSizes = [
+    (await readFile(join(installed, "dist/runtime/threads/zopro_zolana_bg.wasm"))).length,
+    (await readFile(join(installed, "dist/runtime/single/zopro_zolana_bg.wasm"))).length,
+  ].sort((a, b) => a - b);
   for (const outDir of ["dist", "dist-webpack"]) {
     const emitted = [];
     for (const file of await readdir(join(consumer, outDir), { recursive: true })) {
       if (file.endsWith(".wasm")) emitted.push((await readFile(join(consumer, outDir, file))).length);
     }
-    assert.deepEqual(emitted, [runtimeSize], `${outDir} emits the runtime's wasm file`);
+    assert.deepEqual(
+      emitted.sort((a, b) => a - b),
+      runtimeSizes,
+      `${outDir} emits both runtime wasm files`,
+    );
   }
 
   const results = {};
@@ -131,7 +140,19 @@ try {
       logLevel: "warn",
     });
     servers.push(server);
-    results[name] = await check(pageDriver, server.resolvedUrls.local[0]);
+    results[name] = await check(pageDriver, server.resolvedUrls.local[0], true, [0, 1, 2]);
+  }
+  // Same Vite build without isolation: only the single-thread runtime starts.
+  {
+    const server = await vite.preview({
+      root: consumer,
+      configFile: false,
+      build: { outDir: "dist" },
+      preview: { host: "127.0.0.1", port: 0 },
+      logLevel: "warn",
+    });
+    servers.push(server);
+    results.single = await check(pageDriver, server.resolvedUrls.local[0], false, [0]);
   }
 
   // An extension page refuses scripts from blob: URLs, where Rayon's helpers for pages
@@ -156,10 +177,15 @@ try {
       content_security_policy: { extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" },
     }),
   );
-  results.extension = await check(await browser(extension), `chrome-extension://${extensionId}/index.html`);
+  results.extension = await check(
+    await browser(extension),
+    `chrome-extension://${extensionId}/index.html`,
+    true,
+    [0, 1, 2],
+  );
 
   console.log(
-    "PASS: clean packed install with no asset step, strict NodeNext/bundler types, production proofs at one and two threads from Vite and webpack builds and from an MV3 extension page, witness error redaction and recovery.",
+    "PASS: clean packed install with no asset step, strict NodeNext/bundler types, production proofs at zero/one/two threads from Vite and webpack builds and from an MV3 extension page, single-thread proving without isolation, witness error redaction and recovery.",
   );
   console.log(JSON.stringify(results));
 } finally {
@@ -192,13 +218,13 @@ async function browser(extension) {
   return driver;
 }
 
-async function check(driver, url) {
+async function check(driver, url, isolated, threads) {
   await driver.get(url);
   await driver.wait(
     () => driver.executeScript("return typeof window.checkPackedProver === 'function'"),
     30000,
   );
-  assert.equal(await driver.executeScript("return crossOriginIsolated"), true, url);
+  assert.equal(await driver.executeScript("return crossOriginIsolated"), isolated, url);
   const result = await driver.executeAsyncScript(function (done) {
     window.checkPackedProver().then(
       (results) => done({ results }),
@@ -207,8 +233,8 @@ async function check(driver, url) {
   });
   assert.equal(result.error, undefined, `${url}: ${result.error}`);
   assert.deepEqual(
-    result.results.map(({ threads }) => threads),
-    [1, 2],
+    result.results.map(({ threads: count }) => count),
+    threads,
     url,
   );
   const logs = await driver.manage().logs().get(logging.Type.BROWSER);

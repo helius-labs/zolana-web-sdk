@@ -8,12 +8,28 @@ let prover: Record<
   "name" | "digest" | "inputs" | "outputs" | "has_gpu" | "drop_gpu" | "export_raw" | "prove" | "free",
   ReturnType<typeof vi.fn>
 >;
-let runtime: Record<"default" | "initThreadPool" | "init_gpu" | "raw_format", ReturnType<typeof vi.fn>> & {
-  ZolanaProver: ReturnType<typeof vi.fn>;
+let threaded: Record<"default" | "initThreadPool" | "init_gpu" | "raw_format", ReturnType<typeof vi.fn>> & {
+  ZolanaProver: ReturnType<typeof vi.fn> & { from_vectors: ReturnType<typeof vi.fn> };
+};
+let single: Record<"default" | "init_gpu" | "raw_format" | "key_vectors", ReturnType<typeof vi.fn>> & {
+  ZolanaProver: ReturnType<typeof vi.fn> & { from_vectors: ReturnType<typeof vi.fn> };
 };
 let initialized: WorkerResponse;
 
-vi.mock("../src/runtime.js", () => ({ importRuntime: vi.fn(async () => runtime) }));
+vi.mock("../src/runtime.js", () => ({
+  importThreadedRuntime: vi.fn(async () => threaded),
+  importSingleRuntime: vi.fn(async () => single),
+}));
+
+vi.mock("../src/key-decoders.js", () => ({
+  decodeKey: vi.fn(async () => [
+    new Uint8Array([10]),
+    new Uint8Array([11]),
+    new Uint8Array([12]),
+    new Uint8Array([13]),
+    new Uint8Array([14]),
+  ]),
+}));
 
 beforeEach(async () => {
   vi.resetModules();
@@ -29,14 +45,29 @@ beforeEach(async () => {
     prove: vi.fn(async () => ({ proof: "{}", witnessMs: 1, proveMs: 2, verifyMs: 3 })),
     free: vi.fn(),
   };
-  runtime = {
+  const ZolanaProver = Object.assign(
+    vi.fn(function () {
+      return prover;
+    }),
+    {
+      from_vectors: vi.fn(function () {
+        return prover;
+      }),
+    },
+  );
+  threaded = {
     default: vi.fn(async () => {}),
     initThreadPool: vi.fn(async () => {}),
     init_gpu: vi.fn(async () => {}),
     raw_format: vi.fn(() => "raw-test"),
-    ZolanaProver: vi.fn(function () {
-      return prover;
-    }),
+    ZolanaProver,
+  };
+  single = {
+    default: vi.fn(async () => {}),
+    init_gpu: vi.fn(async () => {}),
+    raw_format: vi.fn(() => "raw-test"),
+    key_vectors: vi.fn(() => new Uint32Array([0, 32, 32, 32, 64, 32, 96, 32, 128, 64])),
+    ZolanaProver,
   };
   vi.stubGlobal("self", scope);
   vi.stubGlobal("crossOriginIsolated", true);
@@ -69,7 +100,7 @@ function loadKey(exportRaw = false): Promise<WorkerResponse> {
 }
 
 it("starts the runtime's thread pool and reports its raw key format", () => {
-  expect(runtime.initThreadPool).toHaveBeenCalledWith(2);
+  expect(threaded.initThreadPool).toHaveBeenCalledWith(2);
   expect(initialized.value).toMatchObject({ threads: 2, rawKeyFormat: "raw-test" });
 });
 
@@ -83,7 +114,7 @@ it.each(["prove", "loadKey"] as const)(
         return Promise.reject(sentinel);
       };
       if (kind === "prove") prover.prove.mockImplementation(fail);
-      else runtime.ZolanaProver.mockImplementation(fail);
+      else threaded.ZolanaProver.mockImplementation(fail);
       const response =
         kind === "prove" ? await send({ id: 3, kind: "prove", body: sentinel }) : await loadKey();
       expect(response.ok).toBe(false);
@@ -96,7 +127,7 @@ it.each(["prove", "loadKey"] as const)(
 it("loads a key, checks the gnark key it was built from and moves its raw form to the page", async () => {
   const response = await loadKey(true);
   expect(response.ok).toBe(true);
-  expect(new Uint8Array(runtime.ZolanaProver.mock.calls[0]![0])).toEqual(new Uint8Array([1, 2, 3]));
+  expect(new Uint8Array(threaded.ZolanaProver.mock.calls[0]![0])).toEqual(new Uint8Array([1, 2, 3]));
   expect(response.value).toMatchObject({ key: "transfer_confidential_2_2", inputs: 2, outputs: 2 });
   const raw = (response.value as { raw: Uint8Array }).raw;
   expect(scope.postMessage.mock.calls[0]![1]).toEqual([raw.buffer]);

@@ -8,18 +8,18 @@ Local Groth16 proving and gnark verification in a browser worker. The core packa
 npm install @heliuslabs/zolana-web-prover
 ```
 
-The package contains the worker and the prover runtime: zopro-zolana built for the browser, one WebAssembly module that turns a `/prove` request into the circuit's witness, proves on a thread pool (and on WebGPU where the browser offers it) and verifies the proof before it returns it. Import it, and the app's bundler emits the runtime's module, its wasm and its thread helpers as files beside the worker; the packed-consumer CI builds an app with Vite and with webpack 5 and proves from both. A bundler that does not emit `new URL(…, import.meta.url)` assets and nested module workers (esbuild and Rollup without plugins) cannot load the runtime. Keys load on first use from the pinned key set on the Zolana key CDN, which serves them with CORS, and are checked against the size and SHA-256 bundled in the package, so an app installs none.
+The package contains the worker and the prover runtime: zopro-zolana built for the browser, two WebAssembly modules that turn a `/prove` request into the circuit's witness, prove (on a thread pool, or on one thread) and on WebGPU where the browser offers it, and verify the proof before it returns it. Import it, and the app's bundler emits both runtimes' modules and wasm, and the threaded runtime's helpers, as files beside the worker; the packed-consumer CI builds an app with Vite and with webpack 5 and proves from both. A bundler that does not emit `new URL(…, import.meta.url)` assets and nested module workers (esbuild and Rollup without plugins) cannot load the runtime. Keys load on first use from the pinned key set on the Zolana key CDN, which serves them with CORS, and are checked against the size and SHA-256 bundled in the package, so an app installs none.
 
-Serve the document with:
+For threaded proving, serve the document with:
 
 ```text
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-Use HTTPS (localhost is suitable for development). The runtime's thread pool shares memory between workers, so these headers are required: without cross-origin isolation the prover does not start. `threads` sizes the pool (one or more; by default the browser's processors, at most 18). Every key is checked against the size and SHA-256 bundled in the package from the pinned `zopro-keys.lock`, so the key host does not need to be trusted for integrity.
+Use HTTPS (localhost is suitable for development). The threaded runtime's pool shares memory between workers, so those headers are required when `threads` is one or more (by default the browser's processors, at most 18). Set `threads: 0` for the single-thread runtime, which needs no SharedArrayBuffer and no cross-origin isolation: slower proving, but it works on pages that cannot set COOP/COEP (popups, Firefox, Safari, Firefox extension pages). Key files still decompress across ordinary workers. Document-Isolation-Policy (`isolate-and-credentialless`) also yields `crossOriginIsolated` in Chrome 137+ without breaking popups, so threaded proving can run there without classic COOP/COEP. Every key is checked against the size and SHA-256 bundled in the package from the pinned `zopro-keys.lock`, so the key host does not need to be trusted for integrity.
 
-In a Chrome extension, prove from an extension page; an extension's service worker cannot start workers. Give the manifest the same isolation and allow WebAssembly:
+In a Chrome extension, prove from an extension page; an extension's service worker cannot start workers. Give the manifest the same isolation and allow WebAssembly for threaded proving, or pass `threads: 0` when the page is not isolated:
 
 ```json
 "cross_origin_embedder_policy": { "value": "require-corp" },
@@ -27,7 +27,7 @@ In a Chrome extension, prove from an extension page; an extension's service work
 "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" }
 ```
 
-The packed-consumer CI proves from such a page at one and two threads.
+The packed-consumer CI proves from such a page at one and two threads, and without isolation at `threads: 0`.
 
 ## Prove locally
 
