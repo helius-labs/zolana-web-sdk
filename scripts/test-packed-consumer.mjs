@@ -152,7 +152,24 @@ try {
       logLevel: "warn",
     });
     servers.push(server);
-    results.single = await check(pageDriver, server.resolvedUrls.local[0], false, [0]);
+    results.none = await check(pageDriver, server.resolvedUrls.local[0], false, [0]);
+  }
+  // Document-Isolation-Policy isolates without COOP/COEP, so popups still work and
+  // the threaded pool starts (Chrome 137+; the pinned Chrome for Testing is newer).
+  {
+    const server = await vite.preview({
+      root: consumer,
+      configFile: false,
+      build: { outDir: "dist" },
+      preview: {
+        host: "127.0.0.1",
+        port: 0,
+        headers: { "Document-Isolation-Policy": "isolate-and-credentialless" },
+      },
+      logLevel: "warn",
+    });
+    servers.push(server);
+    results.dip = await check(pageDriver, server.resolvedUrls.local[0], true, [0, 1, 2]);
   }
 
   // An extension page refuses scripts from blob: URLs, where Rayon's helpers for pages
@@ -185,7 +202,7 @@ try {
   );
 
   console.log(
-    "PASS: clean packed install with no asset step, strict NodeNext/bundler types, production proofs at zero/one/two threads from Vite and webpack builds and from an MV3 extension page, single-thread proving without isolation, witness error redaction and recovery.",
+    "PASS: clean packed install with no asset step, strict NodeNext/bundler types, production proofs at zero/one/two threads from Vite and webpack (COOP/COEP), Document-Isolation-Policy, an MV3 extension page, and without isolation at threads 0, witness error redaction and recovery.",
   );
   console.log(JSON.stringify(results));
 } finally {

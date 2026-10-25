@@ -27,7 +27,7 @@ In a Chrome extension, prove from an extension page; an extension's service work
 "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" }
 ```
 
-The packed-consumer CI proves from such a page at one and two threads, and without isolation at `threads: 0`.
+The packed-consumer CI proves under COOP/COEP and under Document-Isolation-Policy at zero, one and two threads, and without isolation at `threads: 0`.
 
 ## Prove locally
 
