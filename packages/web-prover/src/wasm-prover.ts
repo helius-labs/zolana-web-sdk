@@ -1,14 +1,11 @@
 /**
- * Local proving in the browser, wired into the SDK without patching it.
+ * Local proving in the browser.
  *
- * `ProverClient` takes an injectable `fetch`, and the runtime's `prove`
- * accepts and returns exactly the JSON a `POST /prove/<key>` exchange uses (it mirrors
- * `server.processProofSync`). So the whole integration is a `fetch` that
- * recognizes the prover URL and answers it from wasm instead of the network.
- * Everything else -- indexer calls, Solana RPC -- falls through untouched.
- *
- * The runtime is zopro-zolana built for the browser: Zolana's request and
- * proof formats, gnark's keys repacked as zopro key files.
+ * The runtime's `prove` accepts and returns the JSON a `POST /prove/<key>`
+ * exchange uses. Wire it into `@heliuslabs/zolana` with `proveHandler()` and
+ * `createLocalProofService`, or with `createFetch()` and a loopback
+ * `proverUrl` on older SDK releases. The runtime is zopro-zolana: Zolana's
+ * request and proof formats, gnark's keys repacked as zopro key files.
  */
 
 import { abortable } from "./abortable.js";
@@ -68,8 +65,11 @@ export interface WasmProverOptions {
    * them, as `zolana-prover-keys` installs.
    */
   readonly keyBaseUrl?: string;
-  /** The prover URL handed to the SDK; requests to it are intercepted. */
-  readonly proverUrl: string;
+  /**
+   * The prover URL handed to the SDK when using `createFetch()`. Omit it when
+   * proving through `proveHandler()` and `ZolanaClientConfig.prover`.
+   */
+  readonly proverUrl?: string;
   readonly fetch?: typeof globalThis.fetch;
   /** Override worker construction for tests or a custom bundler. */
   readonly workerFactory?: () => Worker;
@@ -365,17 +365,35 @@ export class WasmProver {
   /**
    * A `fetch` for `ZolanaClientConfig.fetch`. Proof requests to `/prove/<key>`
    * are answered by the runtime, other paths below `/prove` are refused, and
-   * everything else is delegated, so one shim covers the client.
+   * everything else is delegated, so one shim covers the client. Prefer
+   * `proveHandler()` with `createLocalProofService` when the SDK supports
+   * `ZolanaClientConfig.prover`.
    */
   createFetch(): typeof globalThis.fetch {
+    const proverUrl = this.#options.proverUrl;
+    if (proverUrl === undefined) {
+      throw new Error("createFetch requires proverUrl; use proveHandler() with createLocalProofService instead");
+    }
     return createProverFetch({
-      proverUrl: this.#options.proverUrl,
+      proverUrl,
       fetch: this.#fetch,
       ...(this.#options.onMeasurement === undefined
         ? {}
         : { onMeasurement: this.#options.onMeasurement }),
       prove: (body, signal) => this.proveRequest(body, signal),
     });
+  }
+
+  /**
+   * Handler for `@heliuslabs/zolana`'s `createLocalProofService`: receives a
+   * `/prove` JSON body and returns the prover's JSON response. Pass the result
+   * as `ZolanaClientConfig.prover` — no loopback URL or `fetch` shim.
+   */
+  proveHandler(): (body: string, context?: { readonly signal?: AbortSignal }) => Promise<unknown> {
+    return async (body, context) => {
+      const { proof } = await this.proveRequest(body, context?.signal);
+      return JSON.parse(proof) as unknown;
+    };
   }
 
   /**

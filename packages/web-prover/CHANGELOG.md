@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2-alpha — unreleased
+
+Added
+
+- `proveHandler()` returns a `/prove` JSON handler for `@heliuslabs/zolana`'s
+  `createLocalProofService`, so the SDK can take `ZolanaClientConfig.prover`
+  with no loopback URL or `createFetch()` shim. `proverUrl` is optional when
+  using that path.
+
 ## 0.4.1-alpha — 2026-10-25
 
 ### Added
