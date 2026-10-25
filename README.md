@@ -78,7 +78,7 @@ The keys are zopro keys: one file per circuit with the gnark proving key's point
 A release is a pull request that sets `packages/web-prover/package.json`'s version and dates its `CHANGELOG.md` entry. After it merges, push the tag from `main`:
 
 ```sh
-git tag web-prover-v0.4.0-alpha && git push origin web-prover-v0.4.0-alpha
+git tag web-prover-v0.4.1-alpha && git push origin web-prover-v0.4.1-alpha
 ```
 
 The `Publish` workflow runs the checks and the consumer gate, refuses a tag that does not name the package's version, and publishes with provenance as `latest`. It authenticates through npm's trusted publishing, which the package's settings on npmjs.com must name: GitHub Actions, `helius-labs/zolana-web-sdk`, workflow `publish.yml`.
