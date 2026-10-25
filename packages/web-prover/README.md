@@ -58,7 +58,21 @@ try {
 
 ### With `@heliuslabs/zolana`
 
-Pass `prover.createFetch()` as `fetch`, set `proofDataSource: "client"`, and use the same loopback `proverUrl` on the client (0.5.0-alpha encrypts non-loopback prover calls for an enclave). Then prove through `LocalKeys.fromKeypair` or, in a wallet, `LocalKeys.fromDerivationSeed`. Paths under that URL’s `/prove` are answered locally; everything else is delegated.
+Prefer an in-process prover (zolana ≥ 0.5.1-alpha): no URL, no HTTP, no TEE loopback:
+
+```ts
+import { createLocalProofService, createZolanaClient } from "@heliuslabs/zolana";
+
+const prover = new ZolanaWebProver({});
+const client = await createZolanaClient({
+  solanaRpcUrl,
+  indexerUrl,
+  proofDataSource: "client",
+  prover: createLocalProofService(prover.proveHandler()),
+});
+```
+
+On 0.5.0-alpha, pass `prover.createFetch()` as `fetch` with a loopback `proverUrl` (that release encrypts non-loopback prover calls for an enclave). Then prove through `LocalKeys.fromKeypair` or `LocalKeys.fromDerivationSeed`.
 
 ## Self-host keys
 
