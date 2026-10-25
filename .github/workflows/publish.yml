@@ -3,13 +3,14 @@ name: Publish
 # Publishes @heliuslabs/zolana-web-prover when a `web-prover-v<version>` tag is
 # pushed: the checks and the consumer gate run first, the tag must name the
 # package's version, and npm's trusted publishing authenticates the job, with
-# provenance, so no token is stored. Every release becomes `latest`.
+# provenance, so no token is stored. Every release becomes `latest` on npm and
+# a GitHub Release on this tag.
 on:
   push:
     tags: ["web-prover-v*"]
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 concurrency:
@@ -40,6 +41,7 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not name version $version"
             exit 1
           fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm run setup
       - run: npm run check
@@ -52,3 +54,28 @@ jobs:
           CHROME_NO_SANDBOX: "1"
       - name: Publish
         run: npm publish --workspace @heliuslabs/zolana-web-prover --provenance --access public --tag latest
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(node --input-type=module - "$VERSION" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const version = process.argv[2];
+          const changelog = readFileSync("packages/web-prover/CHANGELOG.md", "utf8");
+          const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const match = changelog.match(
+            new RegExp(`^## ${escaped}(?: — [^\\n]+)?\\n([\\s\\S]*?)(?=\\n## |$)`, "m"),
+          );
+          const body = (match?.[1] ?? "").trim();
+          const npm = `https://www.npmjs.com/package/@heliuslabs/zolana-web-prover/v/${version}`;
+          process.stdout.write(
+            body === ""
+              ? `Published to npm: ${npm}\n`
+              : `Published to npm: ${npm}\n\n${body}\n`,
+          );
+          NODE
+          )"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "@heliuslabs/zolana-web-prover $VERSION" \
+            --notes "$notes" \
+            --latest

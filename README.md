@@ -81,7 +81,7 @@ A release is a pull request that sets `packages/web-prover/package.json`'s versi
 git tag web-prover-v0.4.1-alpha && git push origin web-prover-v0.4.1-alpha
 ```
 
-The `Publish` workflow runs the checks and the consumer gate, refuses a tag that does not name the package's version, and publishes with provenance as `latest`. It authenticates through npm's trusted publishing, which the package's settings on npmjs.com must name: GitHub Actions, `helius-labs/zolana-web-sdk`, workflow `publish.yml`.
+The `Publish` workflow runs the checks and the consumer gate, refuses a tag that does not name the package's version, publishes with provenance as `latest` on npm, and creates the matching GitHub Release. It authenticates through npm's trusted publishing, which the package's settings on npmjs.com must name: GitHub Actions, `helius-labs/zolana-web-sdk`, workflow `publish.yml`.
 
 ## SDK
 
