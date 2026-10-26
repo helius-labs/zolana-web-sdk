@@ -1,5 +1,5 @@
 // Drives the example in Chrome against devnet: a fresh key registers, shields,
-// sends privately, sends with an app fee and unshields, and every proof must be made in the page.
+// refuses a nine-input local spend, merges through the TEE, then sends and unshields locally.
 //
 //   ZOLANA_E2E_FUNDER=~/.config/solana/id.json \
 //   VITE_SOLANA_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" npm run test:devnet
@@ -59,15 +59,15 @@ const byTestId = (id: string) => By.css(`[data-testid="${id}"]`);
 const activity = By.css('[data-testid="activity"] li');
 
 /** Clicks button and waits for the newest activity entry to finish. */
-async function act(driver: WebDriver, button: string, label: string): Promise<WebElement> {
+async function act(driver: WebDriver, button: string, label: string, expected: "done" | "failed" = "done"): Promise<WebElement> {
   const before = (await driver.findElements(activity)).length;
   await (await driver.findElement(byTestId(button))).click();
   await driver.wait(async () => {
     const [latest] = await driver.findElements(activity);
     if (latest === undefined || (await driver.findElements(activity)).length <= before) return false;
     const status = await latest.getAttribute("data-status");
-    if (status === "failed") throw new Error(`${label} failed: ${await latest.getText()}`);
-    return status === "done";
+    if (status !== "running" && status !== expected) throw new Error(`${label}: ${await latest.getText()}`);
+    return status === expected;
   }, 240_000);
   const [latest] = await driver.findElements(activity);
   assert.ok(latest);
@@ -95,6 +95,7 @@ const server = await createServer({ root: fileURLToPath(new URL("../", import.me
 await server.listen();
 const preferences = new logging.Preferences();
 preferences.setLevel(logging.Type.BROWSER, logging.Level.ALL);
+preferences.setLevel(logging.Type.PERFORMANCE, logging.Level.ALL);
 const options = new chrome.Options();
 options.addArguments("--headless", "--window-size=1200,1400");
 options.setLoggingPrefs(preferences);
@@ -120,6 +121,41 @@ try {
   await act(driver, "register", "Register");
   await driver.wait(until.elementLocated(byTestId("shield")), 60_000);
   await act(driver, "shield", "Shield");
+  const shieldAmount = await driver.findElement(byTestId("shield-amount"));
+  await shieldAmount.clear();
+  await shieldAmount.sendKeys("0.001");
+  for (let i = 0; i < 8; i++) await act(driver, "shield", "Add a note");
+  assert.equal(await driver.findElement(byTestId("private-notes")).getText(), "9");
+  const beforeMerge = await driver.findElement(byTestId("private-balance")).getText();
+  const sendAmount = await driver.findElement(byTestId("send-amount"));
+  await sendAmount.clear();
+  await sendAmount.sendKeys("0.018");
+  const blocked = await act(driver, "send", "Require merge before a nine-input spend", "failed");
+  assert.match(await blocked.getText(), /Merge notes with the TEE first/u);
+  assert.equal((await blocked.findElements(byTestId("local-proof"))).length, 0);
+  assert.equal(await driver.findElement(byTestId("merge")).isEnabled(), false);
+  await act(driver, "toggle-merging", "Enable merging");
+  await driver.manage().logs().get(logging.Type.PERFORMANCE);
+  const merged = await act(driver, "merge", "Merge with TEE");
+  assert.equal((await merged.findElements(byTestId("local-proof"))).length, 0, "the TEE merge used the local prover");
+  assert.equal(await driver.findElement(byTestId("private-balance")).getText(), beforeMerge);
+  assert.equal(await driver.findElement(byTestId("private-notes")).getText(), "1");
+  const requests = (await driver.manage().logs().get(logging.Type.PERFORMANCE)).flatMap((entry) => {
+    const { message } = JSON.parse(entry.message) as { message: {
+      method: string;
+      params: { request: { url: string; method: string; headers: Record<string, string> } };
+    } };
+    return message.method === "Network.requestWillBeSent" ? [message.params.request] : [];
+  });
+  assert.ok(requests.some((r) => r.method === "GET" && new URL(r.url).pathname.endsWith("/tee/v1/attestation")), "missing TEE attestation");
+  assert.ok(requests.some((r) => r.method === "POST" && /\/prove(?:\/|$)/u.test(new URL(r.url).pathname) &&
+    Object.entries(r.headers).some(([key, value]) => key.toLowerCase() === "content-type" && value === "application/octet-stream")),
+  "missing encrypted proof request");
+  await act(driver, "toggle-merging", "Disable merging");
+  assert.equal(await driver.findElement(byTestId("merging-status")).getText(), "Merging is off.");
+  assert.equal(await driver.findElement(byTestId("merge")).isEnabled(), false);
+  await sendAmount.clear();
+  await sendAmount.sendKeys("0.004");
   const sent = await act(driver, "send", "Send");
   assert.ok((await sent.findElements(byTestId("local-proof"))).length > 0, "the transfer was not proved in the page");
   // One transfer and one proof pay the recipient and the app fee, both this wallet here.
@@ -131,7 +167,7 @@ try {
   assert.ok((await unshielded.findElements(byTestId("local-proof"))).length > 0, "the withdrawal was not proved in the page");
   console.log(`private balance ${await driver.findElement(byTestId("private-balance")).getText()}`);
   console.log(`history: ${(await driver.findElement(byTestId("history")).getText()).replaceAll("\n", " | ")}`);
-  console.log("PASS: register, shield, private send, send with fee and unshield on devnet, every proof made in the page");
+  console.log("PASS: eight-input local limit, attested encrypted TEE merge, opt-out, and local sends/withdrawal on devnet");
 } catch (error) {
   console.error(redact(error instanceof Error ? (error.stack ?? error.message) : String(error)));
   await dumpPage(driver);
