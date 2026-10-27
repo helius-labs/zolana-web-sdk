@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A devnet private wallet that proves every transaction in the browser.",
+  "description": "A devnet private wallet with browser proving and TEE merges.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
+    "test": "node --test test/*.test.ts",
     "test:devnet": "node scripts/test-devnet.ts"
   },
   "dependencies": {

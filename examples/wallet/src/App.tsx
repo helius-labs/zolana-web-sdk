@@ -79,8 +79,8 @@ export function App(): React.ReactElement {
     setError("");
     try {
       const slot = await action(session);
-      entry.status = "done";
       setState(await snapshot(session, slot));
+      entry.status = "done";
     } catch (cause) {
       entry.status = "failed";
       entry.detail = cause instanceof Error ? cause.message : String(cause);
@@ -108,8 +108,7 @@ export function App(): React.ReactElement {
       <header>
         <h1>Private wallet</h1>
         <p className="muted">
-          Devnet. Every proof is made in this browser by <code>@heliuslabs/zolana-web-prover</code>; the
-          witness never leaves the page.
+          Devnet. Transfers are proved in this browser. Merges are proved in an attested TEE over an encrypted connection.
         </p>
         <p className="muted" data-testid="keys">{keys}</p>
       </header>
@@ -140,6 +139,10 @@ export function App(): React.ReactElement {
       <section>
         <h2>Private balance</h2>
         <p className="balance" data-testid="private-balance">{sol(state.privateLamports)}</p>
+        <p className="muted">
+          Local proofs use at most 8 input notes: up to <span data-testid="local-spend-limit">{sol(state.localSpendLimit)}</span> per payment,
+          including any app fee. Merge with the TEE first if you need more.
+        </p>
         {!state.registered ? (
           <button data-testid="register" disabled={busy} onClick={() => run("Register", actions.register)}>
             Register private wallet
@@ -215,6 +218,34 @@ export function App(): React.ReactElement {
         )}
         {error !== "" && <p role="alert">{error}</p>}
       </section>
+
+      {state.registered && (
+        <section>
+          <h2>Merge private notes</h2>
+          <p className="muted">
+            Combine up to 24 SOL notes on one tree. Your private balance stays the same; you pay network fees from public SOL.
+            Allowing merges lets a prover combine your notes while keeping the funds in your wallet.
+          </p>
+          <p><span data-testid="private-notes">{state.privateNotes}</span> private notes</p>
+          <p data-testid="merging-status">Merging is {state.mergingEnabled ? "on" : "off"}.</p>
+          <button
+            className="secondary"
+            data-testid="toggle-merging"
+            disabled={busy}
+            onClick={() => run(state.mergingEnabled ? "Disable merging" : "Enable merging", (s) => actions.setMerging(s, !state.mergingEnabled))}
+          >
+            {state.mergingEnabled ? "Disable merging" : "Allow merges"}
+          </button>{" "}
+          <button
+            data-testid="merge"
+            disabled={busy || !state.mergingEnabled || state.privateNotes < 2}
+            onClick={() => run("Merge with TEE", actions.merge)}
+          >
+            Merge with TEE
+          </button>
+          {state.privateNotes < 2 && <p className="muted">At least two notes are needed to merge.</p>}
+        </section>
+      )}
 
       <section>
         <h2>Activity</h2>
