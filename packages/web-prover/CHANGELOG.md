@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Match Zolana v0.6.0-alpha and its new shielded-pool program. Export
+  `ZOLANA_DEPLOYMENTS` for devnet-e and mainnet with their Photon, Nitro and
+  trusted attestation policies, and expose `ZOLANA_PROGRAM_IDS`.
+- Upgrade the wallet example's protocol SDK to 0.6.0-alpha. Select mainnet with
+  `VITE_ZOLANA_NETWORK=mainnet`; demo keys are separated by network and release.
+  Earlier programs' notes and pending transactions require the matching SDK.
+- Keep the existing transfer/merge artifacts: the release's key hashes and
+  `8e234b5a589cfb79` key set are unchanged.
+
 ## 0.4.1-alpha — 2026-10-25
 
 ### Added
