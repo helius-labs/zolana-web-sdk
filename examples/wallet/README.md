@@ -1,6 +1,6 @@
 # Private wallet with local proving and TEE merges
 
-A private wallet on devnet-d using v0.5.0-alpha. Transfers and withdrawals are proved in the browser with at most eight input notes. If a payment, including its app fee, needs more notes, merge them through the TEE first.
+A private wallet on devnet-e using v0.6.0-alpha. Transfers and withdrawals are proved in the browser with at most eight input notes. If a payment, including its app fee, needs more notes, merge them through the TEE first.
 
 The whole integration is in [`src/zolana.ts`](src/zolana.ts):
 
@@ -38,7 +38,20 @@ VITE_SOLANA_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=<key>" npm run 
 
 Open http://127.0.0.1:5179, fund the shown address with devnet SOL, then register and shield. Vite emits the prover's worker and runtime from the package; proving keys load on first use from the Zolana key CDN, checked against the digests bundled in the prover, and the page prefetches the 1x2 and 2x2 keys once it connects. The page must be served with the cross-origin isolation headers in `vite.config.ts`, without which the prover does not start.
 
-Without `VITE_SOLANA_RPC_URL` the page uses the public devnet RPC, which rate-limits confirmations. `VITE_INDEXER_URL` defaults to devnet-d's indexer. `VITE_TEE_PROVER_URL` defaults to its attested prover at `https://d1unet9hn0mci0.cloudfront.net`. The local prover uses a separate loopback URL intercepted in the page; no local witness is sent there.
+Without `VITE_SOLANA_RPC_URL` the page uses the public devnet RPC, which rate-limits confirmations. `VITE_INDEXER_URL` defaults to devnet-e's indexer. `VITE_TEE_PROVER_URL` defaults to its attested prover at `https://dd73hh473h6ha.cloudfront.net`. The local prover uses a separate loopback URL intercepted in the page; no local witness is sent there.
+
+Set `VITE_ZOLANA_NETWORK=mainnet` to test the mainnet deployment, with a mainnet
+`VITE_SOLANA_RPC_URL`. The network setting selects Photon, Nitro and its trusted
+attestation policy together. Demo keys are stored separately for each network
+and protocol release. This example keeps its signer in browser storage; use a
+dedicated testing account, and use a wallet signer in a production application.
+Endpoint overrides retain the selected network's policy, including through a
+proxy; a different enclave requires a reviewed policy in the application.
+
+v0.6.0-alpha uses shielded-pool program
+`ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. Notes and pending transactions
+from earlier program IDs cannot be used in this deployment. The old browser
+storage entry is preserved for recovery with the older SDK.
 
 ## Test
 
@@ -48,4 +61,4 @@ VITE_SOLANA_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=<key>" \
 npm run test:devnet --workspace @zolana/wallet-example
 ```
 
-Drives the page in Chrome with a fresh key funded with 0.05 devnet SOL: register, create nine notes, refuse a local spend that needs all nine, opt into merging, merge with an attested encrypted TEE request, verify the unchanged balance and reduced note count, and opt out. Transfers, an app-fee payment and a withdrawal must still prove locally. The key returns its remaining public SOL to the funder.
+Drives the page in Chrome with a fresh key funded with 0.05 devnet SOL: register, create nine notes, refuse a local spend that needs all nine, opt into merging, merge with an attested encrypted TEE request, verify the unchanged balance and reduced note count, and opt out. Transfers, an app-fee payment and a withdrawal must still prove locally. The key returns its remaining public SOL to the funder. Set `ZOLANA_E2E_ACTION_DELAY_MS=4000` to pace actions when testing with a public RPC.

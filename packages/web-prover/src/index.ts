@@ -15,6 +15,12 @@ export {
 } from "./shapes.js";
 
 export { KEY_BASE_URL } from "./key-digests.js";
+export {
+  ZOLANA_DEPLOYMENTS,
+  ZOLANA_PROGRAM_IDS,
+  ZOLANA_PROTOCOL_VERSION,
+  type ZolanaNetwork,
+} from "./deployments.js";
 export type { KeyProgress, Measurement } from "./measurement.js";
 export type { WasmProverErrorCode } from "./errors.js";
 

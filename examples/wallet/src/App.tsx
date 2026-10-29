@@ -4,7 +4,7 @@ import { address, isAddress } from "@solana/kit";
 import { shapeByLabel, type KeyProgress, type Measurement } from "@heliuslabs/zolana-web-prover";
 
 import { loadBurnerSeed, resetBurner } from "./burner.js";
-import { actions, openSession, snapshot, type PrivateTransaction, type Session, type Snapshot } from "./zolana.js";
+import { actions, network, networkLabel, openSession, snapshot, type PrivateTransaction, type Session, type Snapshot } from "./zolana.js";
 
 interface Activity {
   readonly id: number;
@@ -50,7 +50,7 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    void openSession(loadBurnerSeed(), onMeasurement)
+    void openSession(loadBurnerSeed(network), onMeasurement)
       .then(async (opened) => {
         if (cancelled) return;
         setSession(opened);
@@ -108,8 +108,9 @@ export function App(): React.ReactElement {
       <header>
         <h1>Private wallet</h1>
         <p className="muted">
-          Devnet. Transfers are proved in this browser. Merges are proved in an attested TEE over an encrypted connection.
+          {networkLabel}. Transfers are proved in this browser. Merges are proved in an attested TEE over an encrypted connection.
         </p>
+        {network === "mainnet" && <p className="muted">Demo key stored in this browser. Use a dedicated testing account.</p>}
         <p className="muted" data-testid="keys">{keys}</p>
       </header>
 
@@ -121,14 +122,15 @@ export function App(): React.ReactElement {
         </p>
         {state.publicLamports === 0n && (
           <p className="muted">
-            Fund this devnet address, for example from <a href="https://faucet.solana.com">faucet.solana.com</a>.
+            Fund this address on {networkLabel}.
+            {network === "devnet" && <> Devnet SOL is available from <a href="https://faucet.solana.com">faucet.solana.com</a>.</>}
           </p>
         )}
         <button
           className="secondary"
           disabled={busy}
           onClick={() => {
-            resetBurner();
+            resetBurner(network);
             location.reload();
           }}
         >

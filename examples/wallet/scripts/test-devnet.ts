@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { burnerStorageKey } from "../src/burner.ts";
 import {
   appendTransactionMessageInstruction,
   createKeyPairSignerFromBytes,
@@ -33,7 +34,13 @@ if (rpcUrl === undefined || funderPath === undefined) {
   throw new Error("Set VITE_SOLANA_RPC_URL (a keyed devnet RPC) and ZOLANA_E2E_FUNDER");
 }
 const rpc = createSolanaRpc(rpcUrl);
+if (process.env["VITE_ZOLANA_NETWORK"] === "mainnet" ||
+    await rpc.getGenesisHash().send() !== "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG") {
+  throw new Error("This transaction test requires Solana devnet and the devnet-e deployment");
+}
 const redact = (text: string) => text.replaceAll(rpcUrl, "<rpc>");
+const actionDelay = Number(process.env["ZOLANA_E2E_ACTION_DELAY_MS"] ?? 0);
+assert.ok(Number.isFinite(actionDelay) && actionDelay >= 0);
 
 async function transfer(source: KeyPairSigner, destination: Address, amount: bigint): Promise<void> {
   const { value: blockhash } = await rpc.getLatestBlockhash().send();
@@ -60,6 +67,7 @@ const activity = By.css('[data-testid="activity"] li');
 
 /** Clicks button and waits for the newest activity entry to finish. */
 async function act(driver: WebDriver, button: string, label: string, expected: "done" | "failed" = "done"): Promise<WebElement> {
+  await new Promise((resolve) => setTimeout(resolve, actionDelay));
   const before = (await driver.findElements(activity)).length;
   await (await driver.findElement(byTestId(button))).click();
   await driver.wait(async () => {
@@ -107,7 +115,7 @@ let funded = false;
 try {
   // The page must start before any SOL moves, so a broken build costs nothing.
   await driver.get("http://127.0.0.1:5179/");
-  await driver.executeScript(`localStorage.setItem("zolana-example-burner", "${seedHex}")`);
+  await driver.executeScript("localStorage.setItem(arguments[0], arguments[1])", burnerStorageKey("devnet"), seedHex);
   await driver.navigate().refresh();
   await driver.wait(until.elementLocated(byTestId("owner")), 120_000);
   assert.equal(await driver.findElement(byTestId("owner")).getText(), burner.address);

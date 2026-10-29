@@ -30,20 +30,26 @@ import {
   type KeyPairSigner,
   type Transaction,
 } from "@solana/kit";
-import { ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
+import { ZOLANA_DEPLOYMENTS, ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
 import { limitLocalProofs, localSpendLimit, MERGE_FIRST } from "./local-proving.js";
 export type { Payment };
 
-// devnet-d's indexer directly, until the Helius gateway serves devnet-d. The
-// prover URL is loopback, so the SDK sends proof requests in plaintext and
-// the page answers them; nothing is sent there.
+const selectedNetwork: string = import.meta.env.VITE_ZOLANA_NETWORK ?? "devnet";
+if (selectedNetwork !== "devnet" && selectedNetwork !== "mainnet") {
+  throw new Error("VITE_ZOLANA_NETWORK must be devnet or mainnet");
+}
+export const network = selectedNetwork;
+export const networkLabel = network === "devnet" ? "Devnet-e" : "Mainnet";
+const deployment = ZOLANA_DEPLOYMENTS[network];
+
+// The loopback URL is intercepted in the page; witnesses never go there.
 export const endpoints = {
-  solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
-  indexerUrl: import.meta.env.VITE_INDEXER_URL ?? "https://d21d98xh5lgv3b.cloudfront.net",
+  solanaRpcUrl: import.meta.env.VITE_SOLANA_RPC_URL ?? deployment.solanaRpcUrl,
+  indexerUrl: import.meta.env.VITE_INDEXER_URL ?? deployment.indexerUrl,
   proverUrl: "http://127.0.0.1:3001",
 };
 
-export const teeProverUrl = import.meta.env.VITE_TEE_PROVER_URL ?? "https://d1unet9hn0mci0.cloudfront.net";
+export const teeProverUrl = import.meta.env.VITE_TEE_PROVER_URL ?? deployment.proverUrl;
 
 type Client = Awaited<ReturnType<typeof createZolanaClient>>;
 export type PrivateTransaction = ReturnType<typeof getPrivateTransactions>[number];
@@ -86,7 +92,11 @@ export async function openSession(seed: Uint8Array, onMeasurement: (m: Measureme
   });
   // Merges use the SDK's attested, encrypted transport, without the local
   // prover's fetch interception. Transfers continue to prove in the browser.
-  const mergeClient = await createZolanaClient({ ...endpoints, proverUrl: teeProverUrl });
+  const mergeClient = await createZolanaClient({
+    ...endpoints,
+    proverUrl: teeProverUrl,
+    proverTee: deployment.proverTee,
+  });
   const signer = await createKeyPairSignerFromPrivateKeyBytes(seed);
   // The keys derive from the owner's signature over the Solana off-chain
   // message the SDK defines; a wallet would produce it with signMessage.

@@ -18,6 +18,7 @@
     "test:browser": "npm run test:browser --workspace @zolana/browser-example",
     "test:consumer": "node scripts/test-packed-consumer.mjs",
     "test:devnet": "npm run test:devnet --workspace @zolana/wallet-example",
+    "test:deployments": "node scripts/check-deployments.ts",
     "check": "npm run test && npm run build && npm pack --dry-run --workspace @heliuslabs/zolana-web-prover",
     "check:full": "npm run check && npm run test:browser && npm run test:consumer",
     "dev": "npm run dev --workspace @zolana/browser-example",
