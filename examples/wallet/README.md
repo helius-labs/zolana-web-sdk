@@ -62,3 +62,13 @@ npm run test:devnet --workspace @zolana/wallet-example
 ```
 
 Drives the page in Chrome with a fresh key funded with 0.05 devnet SOL: register, create nine notes, refuse a local spend that needs all nine, opt into merging, merge with an attested encrypted TEE request, verify the unchanged balance and reduced note count, and opt out. Transfers, an app-fee payment and a withdrawal must still prove locally. The key returns its remaining public SOL to the funder. Set `ZOLANA_E2E_ACTION_DELAY_MS=4000` to pace actions when testing with a public RPC.
+
+## Deployment configuration
+
+`src/deployments.ts` is example configuration, independent of the prover package.
+Its reviewed policy files in `policies/` include Nitro measurements and the HPKE
+key pin. `VITE_TEE_POLICY` accepts replacement policy JSON (bare or a deployment
+wrapper); `VITE_TEE_PROVER_URL` changes the URL without selecting a different
+policy. Review and pin the policy before distributing it. The local transfer
+client uses loopback interception and needs no policy; the separate merge client
+always receives the configured remote policy explicitly.

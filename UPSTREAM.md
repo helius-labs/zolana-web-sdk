@@ -1,13 +1,31 @@
 # Upstream
 
-`upstream.lock.json` pins the `helius-labs/zolana` release the prover follows, v0.5.0-alpha, and the `@heliuslabs/zolana` version cut from it. devnet-d runs that release: shielded pool `spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt`, user registry `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`. The prover's keys are zopro keys built from the gnark proving keys that release pins (`prover/server/prover/provingkeys/proving-keys.lock` at the tag, key set `8e234b5a589cfb79`, merges of 8, 24 and 52 notes), so the runtime proves that SDK's `/prove` requests and its proofs report the gnark key's sha256 the SDK expects. A new SDK release re-pins both together and rebuilds the keys. `scripts/check-upstream.sh` (CI job `upstream`) fails when anything below drifts from that pin:
+`upstream.lock.json` pins the protocol release and the npm SDK the wallet example
+uses: v0.6.0-alpha, source `8ae430a154e22bafa819a570d383d04e2046e802`.
+Protocol compatibility is separate from deployment URLs, TEE policy updates and
+the publication location of converted proving keys.
 
-- every confidential transfer and merge key upstream pins has a zopro key in `zopro-keys.lock`, built from the gnark key upstream pins (`key_sha256`), in the same key set and CDN folder;
-- the wallet example depends on the pinned SDK, and the installed SDK's `PROVING_KEY_SHA256S` match the gnark keys the zopro keys were built from.
+CI also builds and packs the SDK at `5cfd7eaed15ef29dc95f6b212cd2844ed0e86860`
+([#501](https://github.com/helius-labs/zolana/pull/501)) and checks the wallet
+example against it. The installed dependency stays on `0.6.0-alpha` until an npm
+release includes that commit. Local clients explicitly select
+`proofDataSource: "client"`; the remote client uses the protocol SDK's routing.
 
-The wallet example installs the SDK from npm, so its pin may lag the protocol pin until that version is published there: the check then notes the lag and skips the installed SDK, and fails once the version is on npm.
+`key-catalog-source.json` pins the reviewed upstream `zopro-keys.lock` by commit
+and SHA-256. `python3 scripts/sync-key-catalog.py` copies that manifest into this
+repository, adding its CDN base URL; `--check` fails on drift. CI checks it and
+compares each `key_sha256` with the protocol release's gnark pin and installed
+SDK. Set `ZOLANA_SRC` to use an existing upstream Git checkout for these checks.
 
-To rebuild the keys after a rotation, run zopro's `tools/gnark/build-keys.sh` with upstream's gnark lockfile, publish the `.zopro` files in the key set's CDN folder and copy the `zopro-keys.lock` it writes here; the package's build and tests generate the key digests and shapes from it.
+Each zopro key has its own byte checksum and the digest of the source gnark key.
+The gnark and zopro version prefixes can differ: upstream's 136-key catalog uses
+`7802e6a064832ccb` for gnark while the 41 unchanged conversions remain under
+`8e234b5a589cfb79`. Adding unrelated circuits does not require rebuilding these
+conversions, republishing them, or invalidating their caches.
+
+Runtime `keyCatalog` input can change download URLs only for conversions whose
+checksums and sizes match the bundled pins. It neither adds supported circuits
+nor replaces the trusted conversion manifest.
 
 The runtime is zopro-zolana at the revision `runtime.lock.json` pins (`scripts/build-runtime.sh`).
 

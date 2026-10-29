@@ -9,6 +9,7 @@ const messages = {
   wasm_invalid_request: "Unsupported circuit or malformed request",
   wasm_merge_too_wide: "The browser merges at most 24 notes",
   wasm_key_manifest_error: "The proving key is not in the pinned key set",
+  wasm_key_catalog_invalid: "Invalid proving-key catalog or conflicting key source configuration",
   wasm_key_download_failed: "Proving-key download failed",
   wasm_key_digest_mismatch: "Proving key does not match the lockfile; stage the pinned assets",
   wasm_key_load_failed: "Proving-key loading failed",

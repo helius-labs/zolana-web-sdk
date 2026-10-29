@@ -7,6 +7,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$root/scripts/sync-key-catalog.py" --check
 lock="$root/upstream.lock.json"
 
 json() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$@"; }
@@ -35,17 +36,15 @@ upstream() { git -C "$source_dir" show "$revision:$1"; }
 
 upstream_keys="$(mktemp "${TMPDIR:-/tmp}/zolana-keys.XXXXXX")"
 upstream prover/server/prover/provingkeys/proving-keys.lock > "$upstream_keys"
-python3 - "$root/zopro-keys.lock" "$upstream_keys" "$(upstream prover/server/prover/common/key_downloader.go | grep -o 'defaultProvingKeysBaseURL = "[^"]*"' | cut -d'"' -f2)" <<'PY' || failed=1
+python3 - "$root/zopro-keys.lock" "$upstream_keys" <<'PY' || failed=1
 import json, re, sys
-zopro_path, upstream_path, base = sys.argv[1:]
+zopro_path, upstream_path = sys.argv[1:]
 zopro = json.load(open(zopro_path))
 upstream = json.load(open(upstream_path))
 browser = re.compile(r"transfer_confidential_\d+_\d+\.key|merge_\d+_1\.key")
 ok = True
 def fail(m):
     global ok; ok = False; print("drift:", m, file=sys.stderr)
-if zopro["prefix"] != upstream["prefix"]: fail(f"zopro-keys.lock names key set {zopro['prefix']}, upstream {upstream['prefix']}")
-if zopro["baseUrl"] != f"{base}/{upstream['prefix']}/": fail(f"zopro-keys.lock baseUrl is {zopro['baseUrl']}, upstream serves {base}/{upstream['prefix']}/")
 wanted = {k for k in upstream["keys"] if browser.fullmatch(k)}
 for k in sorted(wanted - set(zopro["keys"])): fail(f"upstream pins {k}, zopro-keys.lock has no zopro key for it")
 for k, entry in sorted(zopro["keys"].items()):
