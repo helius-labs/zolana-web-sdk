@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2-alpha — 2026-10-29
 
 - Match Zolana v0.6.0-alpha and its new shielded-pool program. Export
   `ZOLANA_DEPLOYMENTS` for devnet-e and mainnet with their Photon, Nitro and
