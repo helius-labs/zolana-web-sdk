@@ -37,6 +37,24 @@ jobs:
       - run: npm run test:consumer
         env:
           CHROME_NO_SANDBOX: "1"
+      - uses: actions/checkout@v6
+        with:
+          repository: helius-labs/zolana
+          ref: 5cfd7eaed15ef29dc95f6b212cd2844ed0e86860
+          path: target/protocol-sdk
+      - name: Build the merged protocol SDK
+        working-directory: target/protocol-sdk/sdk-libs/ts
+        run: |
+          npm ci
+          npm pack --pack-destination "$RUNNER_TEMP" --json > "$RUNNER_TEMP/protocol-sdk-pack.json"
+      - name: Check wallet compatibility with the merged SDK
+        working-directory: examples/wallet
+        run: |
+          archive="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))[0].filename' "$RUNNER_TEMP/protocol-sdk-pack.json")"
+          npm install --no-save --package-lock=false --workspaces=false "$RUNNER_TEMP/$archive" ../../packages/web-prover
+          npm run typecheck
+          npm test
+          npm run build
 
   # The bench page, built once for every runner, with the keys from the key
   # CDN as an app loads them.

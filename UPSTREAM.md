@@ -5,6 +5,12 @@ uses: v0.6.0-alpha, source `8ae430a154e22bafa819a570d383d04e2046e802`.
 Protocol compatibility is separate from deployment URLs, TEE policy updates and
 the publication location of converted proving keys.
 
+CI also builds and packs the SDK at `5cfd7eaed15ef29dc95f6b212cd2844ed0e86860`
+([#501](https://github.com/helius-labs/zolana/pull/501)) and checks the wallet
+example against it. The installed dependency stays on `0.6.0-alpha` until an npm
+release includes that commit. Local clients explicitly select
+`proofDataSource: "client"`; the remote client uses the protocol SDK's routing.
+
 `key-catalog-source.json` pins the reviewed upstream `zopro-keys.lock` by commit
 and SHA-256. `python3 scripts/sync-key-catalog.py` copies that manifest into this
 repository, adding its CDN base URL; `--check` fails on drift. CI checks it and
