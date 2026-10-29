@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Breaking: move `ZOLANA_DEPLOYMENTS` and network policy configuration to the wallet example; applications supply remote URLs and complete reviewed policies.
+- Accept a supplied proving-key download catalog while retaining both gnark and zopro integrity pins. Use exact artifact URLs and independent conversion prefixes.
+- Check the converted-key manifest against its reviewed upstream source.
+
 ## 0.4.2-alpha — 2026-10-29
 
 - Match Zolana v0.6.0-alpha and its new shielded-pool program. Export

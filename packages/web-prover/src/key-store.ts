@@ -14,6 +14,7 @@
 import { abortable, rethrowAbort } from "./abortable.js";
 import { WasmProverError } from "./errors.js";
 import { KEY_BASE_URL, KEY_DIGESTS, KEY_SET } from "./key-digests.js";
+import { catalogKeyUrls, type ProvingKeyCatalog } from "./key-catalog.js";
 import { MERGE_SHAPES, TRANSFER_SHAPES, type ShapeKey } from "./shapes.js";
 
 /** One entry of `KEY_DIGESTS`, copied from `zopro-keys.lock`. */
@@ -53,6 +54,8 @@ export type KeyBytes = Readonly<{
 export interface KeyStoreOptions {
   /** Where keys are fetched from; the pinned key set on the Zolana CDN by default. */
   readonly keyBaseUrl?: string;
+  /** Download URLs from /proving-keys, checked against the bundled pins. */
+  readonly keyCatalog?: ProvingKeyCatalog;
   readonly fetch: typeof globalThis.fetch;
   /** Ask the browser to keep the keys under storage pressure. */
   readonly persistStorage?: boolean;
@@ -60,15 +63,24 @@ export interface KeyStoreOptions {
 
 export class KeyStore {
   readonly #options: KeyStoreOptions;
+  readonly #catalogUrls: ReadonlyMap<string, string> | undefined;
   #prepared = false;
   #cache: Cache | undefined;
 
   constructor(options: KeyStoreOptions) {
     this.#options = options;
+    if (options.keyCatalog !== undefined && options.keyBaseUrl !== undefined)
+      throw new WasmProverError("wasm_key_catalog_invalid");
+    this.#catalogUrls = options.keyCatalog === undefined ? undefined : catalogKeyUrls(options.keyCatalog);
   }
 
   /** The URL of the shape's zopro key file. */
   url(shape: ShapeKey): string {
+    if (this.#catalogUrls !== undefined) {
+      const url = this.#catalogUrls.get(shape.keyFile);
+      if (url === undefined) throw new WasmProverError("wasm_key_manifest_error");
+      return url;
+    }
     return `${(this.#options.keyBaseUrl ?? KEY_BASE_URL).replace(/\/+$/u, "")}/${this.digest(shape).file}`;
   }
 
@@ -86,6 +98,7 @@ export class KeyStore {
     for (const shape of [...TRANSFER_SHAPES, ...MERGE_SHAPES].sort((a, b) => a.keyBytes - b.keyBytes)) {
       const expected = KEY_DIGESTS[shape.keyFile];
       if (expected === undefined) continue;
+      if (this.#catalogUrls !== undefined && !this.#catalogUrls.has(shape.keyFile)) continue;
       const status = { keyFile: shape.keyFile, size: expected.size, downloaded: 0, decoded: false };
       statuses.push(status);
       if (cache === undefined) continue;
@@ -396,12 +409,12 @@ const keyPartsAtOnce = 4;
 
 /** The Cache API ignores fragments, so the raw entry gets its own query. */
 function rawKeyUrl(url: string): string {
-  return `${url}?zolana-key=raw`;
+  return `${url}${url.includes("?") ? "&" : "?"}zolana-key=raw`;
 }
 
 /** Where part `index` of an interrupted download is kept. */
 function partUrl(url: string, index: number): string {
-  return `${url}?zolana-key=part-${String(index)}`;
+  return `${url}${url.includes("?") ? "&" : "?"}zolana-key=part-${String(index)}`;
 }
 
 /**

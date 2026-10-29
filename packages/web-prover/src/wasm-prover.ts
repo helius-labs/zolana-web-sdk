@@ -18,6 +18,7 @@ export { WasmProverError } from "./errors.js";
 import { KeyStore, type KeyBytes, type KeyDigest, type ProvingKeyStatus } from "./key-store.js";
 import { automaticProvingThreads } from "./proving-threads.js";
 import { createProverFetch } from "./prover-fetch.js";
+import type { ProvingKeyCatalog } from "./key-catalog.js";
 import { isWideMerge, proofRequestShape } from "./proof-requests.js";
 import { type ShapeKey } from "./shapes.js";
 
@@ -68,6 +69,13 @@ export interface WasmProverOptions {
    * them, as `zolana-prover-keys` installs.
    */
   readonly keyBaseUrl?: string;
+  /**
+   * A supplied /proving-keys catalog. Its zopro URLs replace the default CDN;
+   * both artifact and source-key digests must match the bundled pins. Missing
+   * conversions fail locally. Mutually exclusive with keyBaseUrl; never fetched
+   * automatically and requires no TEE policy.
+   */
+  readonly keyCatalog?: ProvingKeyCatalog;
   /** The prover URL handed to the SDK; requests to it are intercepted. */
   readonly proverUrl: string;
   readonly fetch?: typeof globalThis.fetch;
@@ -139,6 +147,7 @@ export class WasmProver {
     this.#store = new KeyStore({
       fetch: this.#fetch,
       ...(options.keyBaseUrl === undefined ? {} : { keyBaseUrl: options.keyBaseUrl }),
+      ...(options.keyCatalog === undefined ? {} : { keyCatalog: options.keyCatalog }),
       ...(options.persistStorage === undefined ? {} : { persistStorage: options.persistStorage }),
     });
   }

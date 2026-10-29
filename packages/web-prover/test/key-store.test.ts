@@ -3,6 +3,7 @@ import { WasmProver } from "../src/wasm-prover.js";
 import type { KeyProgress } from "../src/measurement.js";
 import { MERGE_SHAPES, TRANSFER_SHAPES } from "../src/shapes.js";
 import { proverTestHooks } from "./support/prover.js";
+import { KEY_DIGESTS } from "../src/key-digests.js";
 
 // Every pinned key is these 20 MB here: three ranged parts of 8, 8 and 4 MB.
 const { key } = vi.hoisted(() => {
@@ -100,6 +101,30 @@ it("downloads a key in ranged parts and keeps only its decoded form", async () =
   expect(loaded.at(-1)).toBe(key.length);
   expect([...entries.keys()]).toEqual([rawUrl]);
   instance.terminate();
+});
+
+it("downloads from a catalog URL with its query and reuses the decoded cache without networking", async () => {
+  const { fetch } = host();
+  const name = "transfer_confidential_2_2.key";
+  const pin = KEY_DIGESTS[name]!;
+  const url = "https://mirror.example/converted/key.bin?version=pinned";
+  const options = {
+    proverUrl: "http://127.0.0.1:3001", fetch,
+    keyCatalog: { keys: [{ name, artifacts: [
+      { format: "gnark" as const, sha256: pin.keySha256, size: 1, url: "https://keys.example/new/key.key" },
+      { format: "zopro" as const, sha256: pin.sha256, size: pin.size, url },
+    ] }] },
+  };
+  const first = new WasmProver(options);
+  await first.proveRequest(body);
+  expect(fetch.mock.calls.every(([input]) => input === url)).toBe(true);
+  expect(entries.has(`${url}&zolana-key=raw`)).toBe(true);
+  first.terminate();
+  fetch.mockClear();
+  const second = new WasmProver(options);
+  await second.proveRequest(body);
+  expect(fetch).not.toHaveBeenCalled();
+  second.terminate();
 });
 
 it("resumes an interrupted download from the parts it kept", async () => {

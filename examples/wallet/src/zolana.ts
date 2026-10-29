@@ -30,7 +30,8 @@ import {
   type KeyPairSigner,
   type Transaction,
 } from "@solana/kit";
-import { ZOLANA_DEPLOYMENTS, ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
+import { ZolanaWebProver, type Measurement } from "@heliuslabs/zolana-web-prover";
+import { deployments, remoteProverConfig } from "./deployments";
 import { limitLocalProofs, localSpendLimit, MERGE_FIRST } from "./local-proving.js";
 export type { Payment };
 
@@ -40,7 +41,7 @@ if (selectedNetwork !== "devnet" && selectedNetwork !== "mainnet") {
 }
 export const network = selectedNetwork;
 export const networkLabel = network === "devnet" ? "Devnet-e" : "Mainnet";
-const deployment = ZOLANA_DEPLOYMENTS[network];
+const deployment = deployments[network];
 
 // The loopback URL is intercepted in the page; witnesses never go there.
 export const endpoints = {
@@ -50,6 +51,9 @@ export const endpoints = {
 };
 
 export const teeProverUrl = import.meta.env.VITE_TEE_PROVER_URL ?? deployment.proverUrl;
+const remoteProver = import.meta.env.VITE_TEE_POLICY === undefined
+  ? { proverUrl: teeProverUrl, proverTee: deployment.proverTee }
+  : remoteProverConfig(teeProverUrl, JSON.parse(import.meta.env.VITE_TEE_POLICY));
 
 type Client = Awaited<ReturnType<typeof createZolanaClient>>;
 export type PrivateTransaction = ReturnType<typeof getPrivateTransactions>[number];
@@ -94,8 +98,7 @@ export async function openSession(seed: Uint8Array, onMeasurement: (m: Measureme
   // prover's fetch interception. Transfers continue to prove in the browser.
   const mergeClient = await createZolanaClient({
     ...endpoints,
-    proverUrl: teeProverUrl,
-    proverTee: deployment.proverTee,
+    ...remoteProver,
   });
   const signer = await createKeyPairSignerFromPrivateKeyBytes(seed);
   // The keys derive from the owner's signature over the Solana off-chain

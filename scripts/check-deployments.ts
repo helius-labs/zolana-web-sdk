@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { createZolanaClient } from "@heliuslabs/zolana";
 import { address } from "@solana/kit";
-import { ZOLANA_DEPLOYMENTS, ZOLANA_PROGRAM_IDS } from "../packages/web-prover/src/deployments.ts";
+import { ZOLANA_PROGRAM_IDS } from "../packages/web-prover/src/protocol.ts";
+import { deployments } from "../examples/wallet/src/deployments.ts";
 
 const genesis = {
   devnet: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
@@ -11,7 +12,7 @@ const genesis = {
 
 for (const network of ["devnet", "mainnet"] as const) {
   try {
-    const deployment = ZOLANA_DEPLOYMENTS[network];
+    const deployment = deployments[network];
     const client = await createZolanaClient({
       ...deployment,
       solanaRpcUrl: process.env[`ZOLANA_${network.toUpperCase()}_RPC_URL`] ?? deployment.solanaRpcUrl,

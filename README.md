@@ -8,22 +8,18 @@ Local Zolana Groth16 proving in the browser: [`@heliuslabs/zolana-web-prover`](p
 
 - [`@heliuslabs/zolana-web-prover`](packages/web-prover/README.md) — worker, keys, local prove/verify, and a `fetch` shim for the protocol SDK. Matches `@heliuslabs/zolana` 0.6.0-alpha (merges of up to 24 notes).
 - [`examples/wallet`](examples/wallet/README.md) — private wallet on devnet-e (register, shield, send, unshield); start here for an end-to-end flow.
+- `examples/browser` — synthetic-request benchmark and timing harness.
 
 The protocol pin is **v0.6.0-alpha**,
-`8ae430a154e22bafa819a570d383d04e2046e802`. The prover exports network presets
-with matching endpoints and trusted Nitro policies:
+`8ae430a154e22bafa819a570d383d04e2046e802`. Applications supply their RPC,
+indexer and remote prover URLs and reviewed TEE policy. Deployment configuration
+lives in the [wallet example](examples/wallet/src/deployments.ts), with complete
+policy JSON in `examples/wallet/policies`; it is not exported by the prover package.
 
-| Preset | Photon | Nitro |
-| --- | --- | --- |
-| `ZOLANA_DEPLOYMENTS.devnet` (devnet-e) | `https://d34xe1hqb2ibg2.cloudfront.net` | `https://dd73hh473h6ha.cloudfront.net` |
-| `ZOLANA_DEPLOYMENTS.mainnet` | `https://dgcj4pjarvo65.cloudfront.net` | `https://d3ky2kt0ntqxt1.cloudfront.net` |
-
-Supply a Solana RPC on the selected network independently of Photon. Run
-`npm run test:deployments` for live read-only network, program, Photon and Nitro
-checks; `ZOLANA_DEVNET_RPC_URL` and `ZOLANA_MAINNET_RPC_URL` override public RPCs.
-The wallet example defaults to devnet-e; set `VITE_ZOLANA_NETWORK=mainnet` and
-a matching `VITE_SOLANA_RPC_URL` for mainnet testing.
-- `examples/browser` — synthetic-request benchmark and timing harness.
+The example defaults to devnet-e. Set `VITE_ZOLANA_NETWORK=mainnet` and a matching
+`VITE_SOLANA_RPC_URL` for mainnet testing. `VITE_TEE_PROVER_URL` and `VITE_TEE_POLICY`
+(JSON contents) override the remote merge configuration. Run
+`npm run test:deployments` for live read-only checks of the example configuration.
 
 ## Setup
 
