@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.5.0-alpha — 2026-10-29
 
-- Breaking: move `ZOLANA_DEPLOYMENTS` and network policy configuration to the wallet example; applications supply remote URLs and complete reviewed policies.
+- Breaking: remove `ZOLANA_DEPLOYMENTS` and `ZolanaNetwork`. Deployment configuration lives in the wallet example; applications supply remote URLs and complete reviewed policies.
 - Accept a supplied proving-key download catalog while retaining both gnark and zopro integrity pins. Use exact artifact URLs and independent conversion prefixes.
 - Check the converted-key manifest against its reviewed upstream source.
 
